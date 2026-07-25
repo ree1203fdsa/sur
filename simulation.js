@@ -58,6 +58,21 @@ const Sim = {
   activeEvents: [],
   logs: [],
 
+  // ── 신규 시스템 ──
+  approvalRating: 65,   // 지지율 (0-100)
+  tickCount: 0,         // 틱 카운터
+  diplomacy: {          // 외교 시스템
+    countries: [
+      { name: '한마국',       relation: 65, trade: 1200, status: '우호' },
+      { name: '파이썬공화국', relation: 50, trade: 800,  status: '중립' },
+      { name: '알파왕국',     relation: 30, trade: 400,  status: '긴장' },
+      { name: '코딩제국',     relation: 75, trade: 1500, status: '우호' },
+      { name: '네오연방',     relation: 45, trade: 600,  status: '중립' }
+    ]
+  },
+  petitions: [],        // 국민 청원 목록
+  history: { gdp: [], happiness: [], treasury: [] }, // 지표 히스토리
+
   // ── 시간 관리 ──
   month: 1,
   year: 2026,
@@ -75,6 +90,21 @@ const Sim = {
     this.stocks = [];
     this.activeEvents = [];
     this.logs = [];
+
+    // 신규 시스템 초기화
+    this.approvalRating = 65;
+    this.tickCount = 0;
+    this.diplomacy = {
+      countries: [
+        { name: '한마국',       relation: 65, trade: 1200, status: '우호' },
+        { name: '파이썬공화국', relation: 50, trade: 800,  status: '중립' },
+        { name: '알파왕국',     relation: 30, trade: 400,  status: '긴장' },
+        { name: '코딩제국',     relation: 75, trade: 1500, status: '우호' },
+        { name: '네오연방',     relation: 45, trade: 600,  status: '중립' }
+      ]
+    };
+    this.petitions = [];
+    this.history = { gdp: [], happiness: [], treasury: [] };
 
     this.buildJobs();
     this.buildHouses();
@@ -645,6 +675,75 @@ const Sim = {
         }
       }
     });
+
+    // ── 지지율 업데이트 ──
+    this.tickCount++;
+    const happyFac = (this.popHappiness - 50) / 50;
+    const econFac = Math.min(1, (this.gdp / 60000000000) - 0.5);
+    const crimeFac = -this.popCrimeRate / 5;
+    this.approvalRating = Math.max(5, Math.min(95,
+      this.approvalRating + happyFac * 0.8 + econFac * 0.5 + crimeFac * 0.3
+    ));
+
+    // ── 외교 관계도 틱 업데이트 ──
+    this.diplomacy.countries.forEach(c => {
+      c.relation += (Math.random() - 0.52) * 1.5;
+      c.relation = Math.max(0, Math.min(100, c.relation));
+      if      (c.relation >= 70) c.status = '우호';
+      else if (c.relation >= 40) c.status = '중립';
+      else if (c.relation >= 20) c.status = '긴장';
+      else                       c.status = '갈등';
+      if (c.relation <= 5 && window.addNews) {
+        window.addNews(`⚠️ ${c.name}와 외교 위기 발생! 즉각 대응 필요`);
+      }
+    });
+
+    // ── 국민 청원 생성 (매 10틱) ──
+    const PETITION_POOL = [
+      { text:'도로 보수 요청',       cost:50000000,  effects:{ happiness:3 } },
+      { text:'공원 확장 요청',       cost:100000000, effects:{ happiness:5, pollution:-2 } },
+      { text:'야간 조명 설치',       cost:30000000,  effects:{ crimeRate:-0.3 } },
+      { text:'무상급식 확대',        cost:80000000,  effects:{ health:4, happiness:3 } },
+      { text:'교통 카드 할인',       cost:40000000,  effects:{ happiness:4 } },
+      { text:'소음 규제 강화',       cost:20000000,  effects:{ happiness:2 } },
+      { text:'IT 인프라 투자',       cost:200000000, effects:{ tech:15 } },
+      { text:'노인 복지관 건립',     cost:120000000, effects:{ happiness:6 } },
+      { text:'청년 창업 지원금',     cost:150000000, effects:{ unemploymentRate:-0.5 } },
+      { text:'스마트 쓰레기통 설치', cost:60000000,  effects:{ pollution:-3 } }
+    ];
+    if (this.tickCount % 10 === 0 && this.petitions.length < 5) {
+      const pool = PETITION_POOL.filter(p => !this.petitions.some(ex => ex.text === p.text));
+      if (pool.length > 0) {
+        const petition = { ...pool[Math.floor(Math.random() * pool.length)], id: Date.now() + Math.random() };
+        this.petitions.push(petition);
+        if (window.addNews)      window.addNews(`📋 새 청원: "${petition.text}" 접수됨`);
+        if (window.renderPetitions) window.renderPetitions();
+      }
+    }
+
+    // ── 통계 히스토리 저장 ──
+    this.history.gdp.push(this.gdp);
+    this.history.happiness.push(this.popHappiness);
+    this.history.treasury.push(this.treasury);
+    if (this.history.gdp.length > 20) {
+      this.history.gdp.shift();
+      this.history.happiness.shift();
+      this.history.treasury.shift();
+    }
+
+    // ── 뉴스 자동 생성 ──
+    if (window.addNews && this.tickCount % 3 === 0) {
+      const newsItems = [
+        `📈 GDP ₦${(this.gdp/1000000000).toFixed(1)}조 기록`,
+        `🎈 현재 물가상승률 ${this.inflation}%`,
+        `👔 실업률 ${this.unemploymentRate}% — 취업 시장 동향`,
+        `🏦 국고 잔고 ₦${(this.treasury/1000000000).toFixed(1)}조`,
+        `😊 국민 행복도 ${Math.round(this.popHappiness)}% 기록`,
+        `🌿 환경 오염도 ${Math.round(this.pollution)}% — ${this.pollution < 20 ? '양호' : '주의 필요'}`,
+        `📊 지지율 ${Math.round(this.approvalRating)}% — 국민 여론 동향`
+      ];
+      window.addNews(newsItems[Math.floor(Math.random() * newsItems.length)]);
+    }
   },
 
   // ── 11. 가계-기업 간 실제 고용 및 적자 해고/채용 루프 ──
