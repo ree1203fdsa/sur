@@ -443,7 +443,7 @@ c.addEventListener('mousedown', e => {
 
 window.addEventListener('mousemove', e => {
   if (locked && !dlgOpen) {
-    cameraYaw += e.movementX * 0.0025;
+    cameraYaw -= e.movementX * 0.0025;
     cameraPitch -= e.movementY * 0.0025;
     cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
     P.angle = cameraYaw;
@@ -453,7 +453,7 @@ window.addEventListener('mousemove', e => {
     prevMouseX = e.clientX;
     prevMouseY = e.clientY;
 
-    cameraYaw += deltaX * 0.005;
+    cameraYaw -= deltaX * 0.005;
     cameraPitch -= deltaY * 0.005;
     cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
     P.angle = cameraYaw;
@@ -481,7 +481,7 @@ c.addEventListener('touchmove', e => {
     prevMouseX = e.touches[0].clientX;
     prevMouseY = e.touches[0].clientY;
 
-    cameraYaw += deltaX * 0.006;
+    cameraYaw -= deltaX * 0.006;
     cameraPitch -= deltaY * 0.006;
     cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
     P.angle = cameraYaw;
@@ -1235,16 +1235,12 @@ function render(ts) {
   gMin += dt * 6;
   if (gMin >= 1440) { gMin -= 1440; dayN++; P.hunger = Math.max(0, P.hunger - 10); }
 
-  // ─ Ambient Lighting & Sky Colors Cycle ─
-  const h24        = (gMin / 60) % 24;
-  const isNight    = h24 < 6 || h24 > 20;
-  const nightFac   = isNight ? 1 : h24 < 8 ? (8 - h24) / 4 : h24 > 18 ? (h24 - 18) / 4 : 0;
-  const ambientMul = 1 - nightFac * 0.55;
+  // ─ Ambient Lighting & Sky Colors (Locked to Bright Morning) ─
+  const nightFac   = 0; // Forced to 0 to keep it always morning/daytime
+  const ambientMul = 1;
 
-  // Vibrant day sky blue vs deep cyber night sky
-  const daySkyColor = new THREE.Color(0x22629b);
-  const nightSkyColor = new THREE.Color(0x01030a);
-  const skyColor = new THREE.Color().lerpColors(daySkyColor, nightSkyColor, nightFac);
+  // Vibrant day sky blue
+  const skyColor = new THREE.Color(0x22629b);
 
   // Darken and desaturate sky when raining
   if (rainIntensity > 0.01) {
@@ -1255,32 +1251,31 @@ function render(ts) {
   scene.fog.color.copy(skyColor);
 
   // Make fog thicker during rain
-  scene.fog.density = 0.04 + nightFac * 0.06 + rainIntensity * 0.08;
+  scene.fog.density = 0.04 + rainIntensity * 0.08;
 
   // Lights adjustments (Dim sun during rain)
-  ambientLight.intensity = 0.15 + (1 - nightFac) * 0.55 - rainIntensity * 0.15;
-  dirLight.intensity = 0.15 + (1 - nightFac) * 0.85 - rainIntensity * 0.6;
+  ambientLight.intensity = 0.15 + 0.55 - rainIntensity * 0.15;
+  dirLight.intensity = 0.15 + 0.85 - rainIntensity * 0.6;
 
   const dayLightCol = new THREE.Color(0xfffaed);
-  const nightLightCol = new THREE.Color(0x00bfff);
-  dirLight.color.lerpColors(dayLightCol, nightLightCol, nightFac);
+  dirLight.color.copy(dayLightCol);
 
-  // Orbit sun/moon position
-  const sunAngle = (gMin / 1440) * Math.PI * 2 - Math.PI / 2;
+  // Orbit sun position (Locked to a fixed morning position at 10:00 AM)
+  const sunAngle = (600 / 1440) * Math.PI * 2 - Math.PI / 2;
   dirLight.position.set(
     P.x + Math.cos(sunAngle) * 40,
     15 + Math.sin(sunAngle) * 30,
     P.y + Math.sin(sunAngle * 0.5) * 15
   );
 
-  // Star opacity fade (visible only at night, hidden when raining)
+  // Star opacity fade (hidden during morning)
   if (starGroup) {
-    starGroup.material.opacity = nightFac * (1 - rainIntensity) * 0.85;
+    starGroup.material.opacity = 0;
   }
 
   // Building lights intensity (neon glow)
   for (let key in bldMaterials) {
-    bldMaterials[key].emissiveIntensity = 0.25 + nightFac * 1.55;
+    bldMaterials[key].emissiveIntensity = 0.25;
   }
 
   // ─ HUD hints for nearest building in screen path ─
