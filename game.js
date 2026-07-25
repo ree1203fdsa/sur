@@ -493,69 +493,130 @@ let walkTime = 0;
 function initPlayer3D() {
   playerGroup = new THREE.Group();
 
+  // Materials
   const metalMat = new THREE.MeshStandardMaterial({
-    color: 0x1d212b,
-    metalness: 0.85,
-    roughness: 0.15
+    color: 0x8a9ba8, // Light metallic silver-blue
+    metalness: 0.8,
+    roughness: 0.2
+  });
+  
+  const darkMetalMat = new THREE.MeshStandardMaterial({
+    color: 0x2c3e50, // Darker metal trim
+    metalness: 0.9,
+    roughness: 0.1
   });
 
-  visorMat = new THREE.MeshStandardMaterial({
+  const glowMat = new THREE.MeshStandardMaterial({
     color: 0x00ffcc,
     emissive: 0x00ffcc,
     emissiveIntensity: 2.0
   });
 
-  // Torso
-  const torsoGeom = new THREE.BoxGeometry(0.32, 0.4, 0.26);
+  const orangeGlow = new THREE.MeshStandardMaterial({
+    color: 0xffb030,
+    emissive: 0xffb030,
+    emissiveIntensity: 2.0
+  });
+
+  // Torso (chunkier: 0.5 x 0.6 x 0.4)
+  const torsoGeom = new THREE.BoxGeometry(0.5, 0.6, 0.4);
   torso = new THREE.Mesh(torsoGeom, metalMat);
-  torso.position.y = 0.55;
+  torso.position.y = 0.75;
   playerGroup.add(torso);
 
+  // Power Core on the back (facing Z = -0.21)
+  const coreGeom = new THREE.CylinderGeometry(0.15, 0.15, 0.1, 16);
+  const core = new THREE.Mesh(coreGeom, glowMat);
+  core.rotation.x = Math.PI / 2;
+  core.position.set(0, 0.75, -0.21);
+  playerGroup.add(core);
+
   // Head
-  const headGeom = new THREE.BoxGeometry(0.26, 0.26, 0.26);
-  head = new THREE.Mesh(headGeom, metalMat);
-  head.position.y = 0.85;
+  const headGeom = new THREE.BoxGeometry(0.36, 0.36, 0.36);
+  head = new THREE.Mesh(headGeom, darkMetalMat);
+  head.position.y = 1.2;
   playerGroup.add(head);
 
-  // Visor (glowing cyan visor on front of head)
-  const visorGeom = new THREE.BoxGeometry(0.22, 0.07, 0.05);
+  // Visor (glowing cyan on the front)
+  visorMat = glowMat;
+  const visorGeom = new THREE.BoxGeometry(0.3, 0.08, 0.05);
   const visor = new THREE.Mesh(visorGeom, visorMat);
-  visor.position.set(0, 0.85, 0.12);
+  visor.position.set(0, 1.22, 0.18);
   playerGroup.add(visor);
 
-  const legW = 0.09, legH = 0.35;
-  const armW = 0.08, armH = 0.35;
+  // Antennas on ears
+  const antennaGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.12, 8);
+  const leftAntenna = new THREE.Mesh(antennaGeom, darkMetalMat);
+  leftAntenna.position.set(-0.19, 1.25, 0);
+  leftAntenna.rotation.z = Math.PI / 6;
+  playerGroup.add(leftAntenna);
+  
+  const rightAntenna = new THREE.Mesh(antennaGeom, darkMetalMat);
+  rightAntenna.position.set(0.19, 1.25, 0);
+  rightAntenna.rotation.z = -Math.PI / 6;
+  playerGroup.add(rightAntenna);
 
-  // Left Leg
+  // Orange glowing antenna tips
+  const leftTip = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), orangeGlow);
+  leftTip.position.set(-0.22, 1.31, 0);
+  playerGroup.add(leftTip);
+
+  const rightTip = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), orangeGlow);
+  rightTip.position.set(0.22, 1.31, 0);
+  playerGroup.add(rightTip);
+
+  // Legs and Arms
+  const legW = 0.13, legH = 0.45;
+  const armW = 0.11, armH = 0.45;
+
+  // Left Leg Group
   leftLegGroup = new THREE.Group();
-  leftLegGroup.position.set(-0.11, 0.35, 0); // Joint at top
-  const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legW), metalMat);
+  leftLegGroup.position.set(-0.16, 0.45, 0);
+  const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legW), darkMetalMat);
   leftLegMesh.position.y = -legH / 2;
   leftLegGroup.add(leftLegMesh);
+  
+  const footGeom = new THREE.BoxGeometry(legW + 0.04, 0.08, legW + 0.08);
+  const leftFoot = new THREE.Mesh(footGeom, metalMat);
+  leftFoot.position.set(0, -legH + 0.04, 0.04);
+  leftLegGroup.add(leftFoot);
   playerGroup.add(leftLegGroup);
 
-  // Right Leg
+  // Right Leg Group
   rightLegGroup = new THREE.Group();
-  rightLegGroup.position.set(0.11, 0.35, 0);
-  const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legW), metalMat);
+  rightLegGroup.position.set(0.16, 0.45, 0);
+  const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legW), darkMetalMat);
   rightLegMesh.position.y = -legH / 2;
   rightLegGroup.add(rightLegMesh);
+  
+  const rightFoot = new THREE.Mesh(footGeom, metalMat);
+  rightFoot.position.set(0, -legH + 0.04, 0.04);
+  rightLegGroup.add(rightFoot);
   playerGroup.add(rightLegGroup);
 
-  // Left Arm
+  // Left Arm Group
   leftArmGroup = new THREE.Group();
-  leftArmGroup.position.set(-0.21, 0.65, 0);
+  leftArmGroup.position.set(-0.31, 0.95, 0);
   const leftArmMesh = new THREE.Mesh(new THREE.BoxGeometry(armW, armH, armW), metalMat);
   leftArmMesh.position.y = -armH / 2;
   leftArmGroup.add(leftArmMesh);
+  
+  const cuffGeom = new THREE.BoxGeometry(armW + 0.02, 0.06, armW + 0.02);
+  const leftCuff = new THREE.Mesh(cuffGeom, orangeGlow);
+  leftCuff.position.y = -armH + 0.03;
+  leftArmGroup.add(leftCuff);
   playerGroup.add(leftArmGroup);
 
-  // Right Arm
+  // Right Arm Group
   rightArmGroup = new THREE.Group();
-  rightArmGroup.position.set(0.21, 0.65, 0);
+  rightArmGroup.position.set(0.31, 0.95, 0);
   const rightArmMesh = new THREE.Mesh(new THREE.BoxGeometry(armW, armH, armW), metalMat);
   rightArmMesh.position.y = -armH / 2;
   rightArmGroup.add(rightArmMesh);
+  
+  const rightCuff = new THREE.Mesh(cuffGeom, orangeGlow);
+  rightCuff.position.y = -armH + 0.03;
+  rightArmGroup.add(rightCuff);
   playerGroup.add(rightArmGroup);
 
   // Set initial position
