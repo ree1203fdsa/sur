@@ -1,27 +1,26 @@
 // ==========================================
-//   네오폴리스 — 수도 1인칭 탐험
-//   game.js  (레이캐스팅 3D 엔진)
+//   네오폴리스 — 수도 3D 탐험
+//   game.js  (Three.js 3D 엔진)
 // ==========================================
 
-// ── CANVAS SETUP ──
-const c   = document.getElementById('c');
-const ctx = c.getContext('2d');
-const mm  = document.getElementById('minimap');
+// ── CANVAS & MINIMAP SETUP ──
+const c = document.getElementById('c');
+const mm = document.getElementById('minimap');
 const mctx = mm.getContext('2d');
 
-const RW = 640, RH = 360;
-c.width  = RW;
-c.height = RH;
-
-const imgData = ctx.createImageData(RW, RH);
-const pix     = imgData.data;
+// ── THREE.JS GLOBALS ──
+let scene, camera, renderer;
+let ambientLight, dirLight, hemiLight;
+let cameraYaw = -Math.PI / 2;
+let cameraPitch = 0.2;
+const bldMaterials = {};
+const geomCache = {};
 
 // ── MAP CONSTANTS ──
 const MW = 64, MH = 64, MCX = 32, MCY = 32;
 const MAP = [];
 
 // ── BUILDING INFO ──
-// acc = accent (window glow colour)   base = wall base colour
 const BINFO = {
   1:  { name: '정부 종합청사',   acc: [160,  80, 255], base: [40, 15, 70] },
   2:  { name: '국제금융센터',    acc: [255, 180,  50], base: [80, 55, 10] },
@@ -149,7 +148,7 @@ BLDS.forEach(b => {
 
 // ── PLAYER STATE ──
 const P = {
-  x: 32.5, y: 24.5,
+  x: 32.5, y: 32.5,
   angle: -Math.PI / 2,
   health: 100, happy: 75, hunger: 80, energy: 100,
   money: 500000,
@@ -160,22 +159,6 @@ let gMin    = 480;  // starts at 08:00
 let dayN    = 1;
 let dlgOpen = false;
 let locked  = false;
-
-// ── STARS (pre-computed, static) ──
-const STARS = Array.from({ length: 220 }, () => ({
-  x: Math.floor(Math.random() * RW),
-  y: Math.floor(Math.random() * RH * 0.48),
-  b: 0.3 + Math.random() * 0.7,
-  big: Math.random() > 0.95,
-}));
-
-// ── RAIN PARTICLES ──
-const RAIN = Array.from({ length: 80 }, () => ({
-  x:   Math.random() * RW,
-  y:   Math.random() * RH,
-  spd: 4 + Math.random() * 6,
-  len: 8 + Math.random() * 12,
-}));
 
 // ── UTILITY ──
 function cap(v, lo = 0, hi = 100) { return Math.max(lo, Math.min(hi, v)); }
@@ -193,7 +176,12 @@ document.addEventListener('pointerlockchange', () => {
 });
 
 document.addEventListener('mousemove', e => {
-  if (locked && !dlgOpen) P.angle += e.movementX * 0.002;
+  if (locked && !dlgOpen) {
+    cameraYaw += e.movementX * 0.0025;
+    cameraPitch -= e.movementY * 0.0025;
+    cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
+    P.angle = cameraYaw;
+  }
 });
 
 addEventListener('keydown', e => {
@@ -201,7 +189,11 @@ addEventListener('keydown', e => {
   if (e.key === 'Escape' && dlgOpen) closeDialog();
   else if (e.key === 'Escape' && locked) document.exitPointerLock();
   if (e.key === 'e' || e.key === 'E') interact();
-  e.preventDefault();
+  
+  // Prevent page scroll for navigation keys
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 's', 'a', 'd', 'W', 'S', 'A', 'D'].includes(e.key)) {
+    e.preventDefault();
+  }
 });
 addEventListener('keyup', e => { K[e.key] = false; });
 
@@ -251,16 +243,13 @@ function showNotice(msg) {
 function interact() {
   if (dlgOpen) { closeDialog(); return; }
 
-  // Cast a fan of rays in front of player and check for nearby walls
-  for (let col = RW / 2 - 10; col < RW / 2 + 10; col++) {
-    const a   = P.angle - FOV / 2 + (col / RW) * FOV;
-    const ray = castRay(P.x, P.y, a);
-    if (ray.dist < 1.9 && ray.hit > 0) {
-      const b = bldMap[`${ray.mapX},${ray.mapY}`];
-      if (b) { openDialog(b.name, b.greet, b.items); return; }
-      const bi = BINFO[ray.hit];
-      if (bi) { openDialog(bi.name, '이 건물 내부에는 현재 들어갈 수 없습니다.', []); return; }
-    }
+  // Check what building is in front of the camera view direction
+  const ray = castRay(P.x, P.y, cameraYaw);
+  if (ray.dist < 1.9 && ray.hit > 0) {
+    const b = bldMap[`${ray.mapX},${ray.mapY}`];
+    if (b) { openDialog(b.name, b.greet, b.items); return; }
+    const bi = BINFO[ray.hit];
+    if (bi) { openDialog(bi.name, '이 건물 내부에는 현재 들어갈 수 없습니다.', []); return; }
   }
   showNotice('가까이 다가가서 [E] 를 눌러 상호작용하세요.');
 }
@@ -275,9 +264,7 @@ function canMove(nx, ny) {
 }
 
 // ── RAYCASTING (DDA) ──
-const FOV      = Math.PI / 3;   // 60°
-const HALF_FOV = FOV / 2;
-
+// Pure logical DDA check (used for HUD building name detection and interaction detection)
 function castRay(px, py, angle) {
   const cos = Math.cos(angle), sin = Math.sin(angle);
   let mapX = Math.floor(px), mapY = Math.floor(py);
@@ -299,7 +286,6 @@ function castRay(px, py, angle) {
     }
   }
 
-  // Exact wall-hit horizontal fraction (for window pattern)
   let wallX = side === 0 ? py + dist * sin : px + dist * cos;
   wallX -= Math.floor(wallX);
 
@@ -327,11 +313,386 @@ function updateHUD() {
   document.getElementById('dname').textContent = t > 0 ? (BINFO[t]?.name || '건물') : '도로 / 광장';
 }
 
-// ── PIXEL WRITE ──
-function sp(x, y, r, g, b) {
-  const i = (y * RW + x) * 4;
-  pix[i] = r; pix[i+1] = g; pix[i+2] = b; pix[i+3] = 255;
+// ── THREE.JS SCENE INITIALIZATION ──
+
+// Create stylized canvas texture for roads and parks footprints
+function createFloorTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const ctx = canvas.getContext('2d');
+
+  // Ground base
+  ctx.fillStyle = '#0b0e14';
+  ctx.fillRect(0, 0, 1024, 1024);
+
+  const scale = 1024 / 64; // 16 pixels per grid tile
+
+  for (let y = 0; y < 64; y++) {
+    for (let x = 0; x < 64; x++) {
+      const t = MAP[y][x];
+      const px = x * scale;
+      const py = y * scale;
+
+      if (t === 0) {
+        // Road
+        ctx.fillStyle = '#0f1320';
+        ctx.fillRect(px, py, scale, scale);
+
+        // Thin blue road lines
+        ctx.strokeStyle = 'rgba(0, 200, 255, 0.1)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(px, py, scale, scale);
+
+        // Center lines on major avenues (grid pattern roads)
+        const onMainX = (x % 7 === 0);
+        const onMainY = (y % 7 === 0);
+        if (onMainX || onMainY) {
+          ctx.strokeStyle = 'rgba(255, 176, 48, 0.3)';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 2]);
+          ctx.beginPath();
+          if (onMainX) {
+            ctx.moveTo(px + scale/2, py);
+            ctx.lineTo(px + scale/2, py + scale);
+          }
+          if (onMainY) {
+            ctx.moveTo(px, py + scale/2);
+            ctx.lineTo(px + scale, py + scale/2);
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      } else if (t === 9) {
+        // Eco park lawn
+        ctx.fillStyle = '#081e0f';
+        ctx.fillRect(px, py, scale, scale);
+      } else {
+        // Building footprint
+        ctx.fillStyle = '#05070a';
+        ctx.fillRect(px, py, scale, scale);
+      }
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  return texture;
 }
+
+// Generate procedurally textured materials for buildings with neon glowing window grids
+function getBuildingMaterial(type, bldInfo, height) {
+  const cacheKey = `${type}_${height}`;
+  if (bldMaterials[cacheKey]) return bldMaterials[cacheKey];
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  const base = bldInfo.base;
+  const acc = bldInfo.acc;
+
+  // Building base wall color
+  ctx.fillStyle = `rgb(${base[0]}, ${base[1]}, ${base[2]})`;
+  ctx.fillRect(0, 0, 128, 256);
+
+  // Draw windows
+  const rows = 12 * height;
+  const cols = 4;
+  const winW = 20;
+  const winH = 10;
+  const padX = 9;
+  const padY = 8;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      // Deterministic windows layout based on trigonometric hashes
+      const hash = Math.abs(Math.sin(type * 13.7 + r * 27.9 + c * 37.1));
+      const winLit = hash > 0.35; // ~65% window lit rate
+
+      const x = padX + c * (winW + padX);
+      const y = padY + r * (winH + padY);
+
+      if (winLit) {
+        // Glowing neon windows
+        ctx.fillStyle = `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})`;
+      } else {
+        // Dark windows
+        ctx.fillStyle = `rgb(${Math.floor(base[0] * 0.18)}, ${Math.floor(base[1] * 0.18)}, ${Math.floor(base[2] * 0.18)})`;
+      }
+      ctx.fillRect(x, y, winW, winH);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(base[0]/255, base[1]/255, base[2]/255),
+    roughness: 0.6,
+    metalness: 0.2,
+    map: texture,
+    emissiveMap: texture,
+    emissive: new THREE.Color(0.8, 0.8, 0.8),
+    emissiveIntensity: 1.0
+  });
+
+  bldMaterials[cacheKey] = mat;
+  return mat;
+}
+
+function getBuildingGeometry(height) {
+  if (geomCache[height]) return geomCache[height];
+  const H = height * 4.0;
+  // A box slightly smaller than the 1x1 grid tile to leave space for streets
+  const geom = new THREE.BoxGeometry(0.88, H, 0.88);
+  geomCache[height] = geom;
+  return geom;
+}
+
+// Build 3D City Meshes
+function init3DCity() {
+  for (let y = 0; y < MH; y++) {
+    for (let x = 0; x < MW; x++) {
+      const t = MAP[y][x];
+      if (t > 0) {
+        const bi = BINFO[t];
+        if (!bi) continue;
+
+        const distFromCentre = Math.sqrt((x - MCX) ** 2 + (y - MCY) ** 2);
+        const bh = bHeight(distFromCentre);
+        const H = bh * 4.0;
+
+        const geom = getBuildingGeometry(bh);
+        const mat = getBuildingMaterial(t, bi, bh);
+
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(x + 0.5, H / 2, y + 0.5);
+        scene.add(mesh);
+
+        // Add a neon styling roof cap
+        const capGeom = new THREE.BoxGeometry(0.88, 0.08, 0.88);
+        const capMat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(bi.acc[0]/255, bi.acc[1]/255, bi.acc[2]/255)
+        });
+        const capMesh = new THREE.Mesh(capGeom, capMat);
+        capMesh.position.set(x + 0.5, H + 0.04, y + 0.5);
+        scene.add(capMesh);
+      }
+    }
+  }
+}
+
+// ── 3D PLAYER MODEL SETUP ──
+let playerGroup;
+let leftLegGroup, rightLegGroup, leftArmGroup, rightArmGroup;
+let torso, head, visorMat;
+let walkTime = 0;
+
+function initPlayer3D() {
+  playerGroup = new THREE.Group();
+
+  const metalMat = new THREE.MeshStandardMaterial({
+    color: 0x1d212b,
+    metalness: 0.85,
+    roughness: 0.15
+  });
+
+  visorMat = new THREE.MeshStandardMaterial({
+    color: 0x00ffcc,
+    emissive: 0x00ffcc,
+    emissiveIntensity: 2.0
+  });
+
+  // Torso
+  const torsoGeom = new THREE.BoxGeometry(0.32, 0.4, 0.26);
+  torso = new THREE.Mesh(torsoGeom, metalMat);
+  torso.position.y = 0.55;
+  playerGroup.add(torso);
+
+  // Head
+  const headGeom = new THREE.BoxGeometry(0.26, 0.26, 0.26);
+  head = new THREE.Mesh(headGeom, metalMat);
+  head.position.y = 0.85;
+  playerGroup.add(head);
+
+  // Visor (glowing cyan visor on front of head)
+  const visorGeom = new THREE.BoxGeometry(0.22, 0.07, 0.05);
+  const visor = new THREE.Mesh(visorGeom, visorMat);
+  visor.position.set(0, 0.85, 0.12);
+  playerGroup.add(visor);
+
+  const legW = 0.09, legH = 0.35;
+  const armW = 0.08, armH = 0.35;
+
+  // Left Leg
+  leftLegGroup = new THREE.Group();
+  leftLegGroup.position.set(-0.11, 0.35, 0); // Joint at top
+  const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legW), metalMat);
+  leftLegMesh.position.y = -legH / 2;
+  leftLegGroup.add(leftLegMesh);
+  playerGroup.add(leftLegGroup);
+
+  // Right Leg
+  rightLegGroup = new THREE.Group();
+  rightLegGroup.position.set(0.11, 0.35, 0);
+  const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legW), metalMat);
+  rightLegMesh.position.y = -legH / 2;
+  rightLegGroup.add(rightLegMesh);
+  playerGroup.add(rightLegGroup);
+
+  // Left Arm
+  leftArmGroup = new THREE.Group();
+  leftArmGroup.position.set(-0.21, 0.65, 0);
+  const leftArmMesh = new THREE.Mesh(new THREE.BoxGeometry(armW, armH, armW), metalMat);
+  leftArmMesh.position.y = -armH / 2;
+  leftArmGroup.add(leftArmMesh);
+  playerGroup.add(leftArmGroup);
+
+  // Right Arm
+  rightArmGroup = new THREE.Group();
+  rightArmGroup.position.set(0.21, 0.65, 0);
+  const rightArmMesh = new THREE.Mesh(new THREE.BoxGeometry(armW, armH, armW), metalMat);
+  rightArmMesh.position.y = -armH / 2;
+  rightArmGroup.add(rightArmMesh);
+  playerGroup.add(rightArmGroup);
+
+  // Set initial position
+  playerGroup.position.set(P.x, 0, P.y);
+  scene.add(playerGroup);
+}
+
+// ── 3D WEATHER & SKY SYSTEMS ──
+let rainGeometry, rainParticles;
+const rainCount = 800;
+
+function createRain() {
+  rainGeometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(rainCount * 3);
+
+  for (let i = 0; i < rainCount; i++) {
+    positions[i * 3] = P.x + (Math.random() - 0.5) * 30;
+    positions[i * 3 + 1] = Math.random() * 15;
+    positions[i * 3 + 2] = P.y + (Math.random() - 0.5) * 30;
+  }
+
+  rainGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const rainMat = new THREE.PointsMaterial({
+    color: 0x64a0ff,
+    size: 0.08,
+    transparent: true,
+    opacity: 0.35
+  });
+
+  rainParticles = new THREE.Points(rainGeometry, rainMat);
+  scene.add(rainParticles);
+}
+
+function updateRain(dt) {
+  if (!rainParticles) return;
+  const positions = rainGeometry.attributes.position.array;
+
+  for (let i = 0; i < rainCount; i++) {
+    positions[i * 3 + 1] -= 16 * dt; // gravity
+
+    // Reset particle to top if it hits the ground
+    if (positions[i * 3 + 1] < 0) {
+      positions[i * 3] = P.x + (Math.random() - 0.5) * 30;
+      positions[i * 3 + 1] = 12 + Math.random() * 5;
+      positions[i * 3 + 2] = P.y + (Math.random() - 0.5) * 30;
+    }
+  }
+
+  rainGeometry.attributes.position.needsUpdate = true;
+}
+
+let starGroup;
+function createStars3D() {
+  const starCount = 250;
+  const geom = new THREE.BufferGeometry();
+  const positions = new Float32Array(starCount * 3);
+
+  for (let i = 0; i < starCount; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(Math.random()); // Only upper hemisphere (y >= 0)
+    const r = 160;
+
+    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+    positions[i * 3 + 1] = r * Math.cos(phi);
+    positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
+  }
+
+  geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+  const starMat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: 0.5,
+    transparent: true,
+    opacity: 0.8
+  });
+
+  starGroup = new THREE.Points(geom, starMat);
+  scene.add(starGroup);
+}
+
+// ── INITIALIZE GAME ──
+function init3D() {
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x020512, 0.04);
+
+  camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+  renderer = new THREE.WebGLRenderer({ canvas: c, antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  // Lights
+  ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+  scene.add(ambientLight);
+
+  dirLight = new THREE.DirectionalLight(0xfffaed, 0.8);
+  dirLight.position.set(20, 40, 20);
+  scene.add(dirLight);
+
+  hemiLight = new THREE.HemisphereLight(0xffffff, 0x222244, 0.25);
+  scene.add(hemiLight);
+
+  // Floor
+  const floorGeo = new THREE.PlaneGeometry(64, 64);
+  const floorTex = createFloorTexture();
+  const floorMat = new THREE.MeshStandardMaterial({
+    map: floorTex,
+    roughness: 0.85,
+    metalness: 0.15
+  });
+  const floor = new THREE.Mesh(floorGeo, floorMat);
+  floor.rotation.x = -Math.PI / 2;
+  floor.position.set(32, 0, 32); // aligned to cover x/z from 0 to 64
+  scene.add(floor);
+
+  // Build the city assets
+  init3DCity();
+
+  // Create player
+  initPlayer3D();
+
+  // Create stars background
+  createStars3D();
+
+  // Create rain particle effects
+  createRain();
+}
+
+// ── WINDOW RESIZING ──
+window.addEventListener('resize', () => {
+  if (camera && renderer) {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  }
+});
 
 // ── MAIN RENDER LOOP ──
 let prevT = 0;
@@ -340,190 +701,171 @@ function render(ts) {
   const dt = Math.min((ts - prevT) / 1000, 0.1);
   prevT = ts;
 
-  // ─ Movement ─
-  if (!dlgOpen && locked) {
-    const spd = 0.055;
-    if (K['w'] || K['W'] || K['ArrowUp']) {
-      const nx = P.x + Math.cos(P.angle) * spd;
-      const ny = P.y + Math.sin(P.angle) * spd;
-      if (canMove(nx, P.y)) P.x = nx;
-      if (canMove(P.x, ny)) P.y = ny;
-    }
-    if (K['s'] || K['S'] || K['ArrowDown']) {
-      const nx = P.x - Math.cos(P.angle) * spd * 0.65;
-      const ny = P.y - Math.sin(P.angle) * spd * 0.65;
-      if (canMove(nx, P.y)) P.x = nx;
-      if (canMove(P.x, ny)) P.y = ny;
-    }
-    if (K['a'] || K['A']) {
-      const nx = P.x + Math.cos(P.angle - Math.PI / 2) * spd * 0.7;
-      const ny = P.y + Math.sin(P.angle - Math.PI / 2) * spd * 0.7;
-      if (canMove(nx, P.y)) P.x = nx;
-      if (canMove(P.x, ny)) P.y = ny;
-    }
-    if (K['d'] || K['D']) {
-      const nx = P.x + Math.cos(P.angle + Math.PI / 2) * spd * 0.7;
-      const ny = P.y + Math.sin(P.angle + Math.PI / 2) * spd * 0.7;
-      if (canMove(nx, P.y)) P.x = nx;
-      if (canMove(P.x, ny)) P.y = ny;
-    }
-    if (K['ArrowLeft'])  P.angle -= 0.04;
-    if (K['ArrowRight']) P.angle += 0.04;
+  if (!scene) {
+    // If scene is not initialized yet, set it up
+    init3D();
   }
 
-  // ─ Game time ─
+  // ─ Movement ─
+  let isMoving = false;
+  if (!dlgOpen && locked) {
+    const spd = 4.2 * dt;
+    let moveX = 0, moveZ = 0;
+
+    // Movement forward/backwards relative to camera rotation
+    const fx = Math.sin(cameraYaw);
+    const fz = Math.cos(cameraYaw);
+
+    if (K['w'] || K['W'] || K['ArrowUp']) {
+      moveX += fx;
+      moveZ += fz;
+      isMoving = true;
+    }
+    if (K['s'] || K['S'] || K['ArrowDown']) {
+      moveX -= fx;
+      moveZ -= fz;
+      isMoving = true;
+    }
+    if (K['a'] || K['A']) {
+      moveX += Math.cos(cameraYaw);
+      moveZ -= Math.sin(cameraYaw);
+      isMoving = true;
+    }
+    if (K['d'] || K['D']) {
+      moveX -= Math.cos(cameraYaw);
+      moveZ += Math.sin(cameraYaw);
+      isMoving = true;
+    }
+
+    // Keyboard camera steering
+    if (K['ArrowLeft']) {
+      cameraYaw -= 2.0 * dt;
+      P.angle = cameraYaw;
+    }
+    if (K['ArrowRight']) {
+      cameraYaw += 2.0 * dt;
+      P.angle = cameraYaw;
+    }
+
+    if (isMoving) {
+      // Normalize movement direction
+      const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+      moveX = (moveX / len) * spd;
+      moveZ = (moveZ / len) * spd;
+
+      // Apply collisions using MAP boundaries (P.y is the Z coord in maps)
+      const nx = P.x + moveX;
+      const nz = P.y + moveZ;
+      if (canMove(nx, P.y)) P.x = nx;
+      if (canMove(P.x, nz)) P.y = nz;
+
+      // Rotate player group to face movement direction
+      const targetRotationY = Math.atan2(moveX, moveZ);
+      let diff = targetRotationY - playerGroup.rotation.y;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      playerGroup.rotation.y += diff * 0.15; // smooth rotation
+    }
+  }
+
+  // Update 3D player position
+  if (playerGroup) {
+    playerGroup.position.set(P.x, 0, P.y);
+
+    // Player limb animations
+    if (isMoving) {
+      walkTime += dt;
+      leftLegGroup.rotation.x = Math.sin(walkTime * 12) * 0.55;
+      rightLegGroup.rotation.x = -Math.sin(walkTime * 12) * 0.55;
+      leftArmGroup.rotation.x = -Math.sin(walkTime * 12) * 0.55;
+      rightArmGroup.rotation.x = Math.sin(walkTime * 12) * 0.55;
+
+      // slight walking bob
+      torso.position.y = 0.55 + Math.abs(Math.sin(walkTime * 12)) * 0.035;
+      head.position.y = 0.85 + Math.abs(Math.sin(walkTime * 12)) * 0.035;
+    } else {
+      // return back to idle pose
+      leftLegGroup.rotation.x *= 0.8;
+      rightLegGroup.rotation.x *= 0.8;
+      leftArmGroup.rotation.x *= 0.8;
+      rightArmGroup.rotation.x *= 0.8;
+
+      // breathing bob
+      torso.position.y = 0.55 + Math.sin(ts * 0.0025) * 0.01;
+      head.position.y = 0.85 + Math.sin(ts * 0.0025) * 0.01;
+    }
+
+    // Visor pulsating cyan glow
+    if (visorMat) {
+      visorMat.emissiveIntensity = 1.6 + Math.sin(ts * 0.004) * 0.4;
+    }
+  }
+
+  // ─ Camera position tracking 3rd person ─
+  if (camera) {
+    const camDist = 4.2;
+    camera.position.x = P.x - Math.sin(cameraYaw) * Math.cos(cameraPitch) * camDist;
+    camera.position.y = 0.8 + Math.sin(cameraPitch) * camDist;
+    camera.position.z = P.y - Math.cos(cameraYaw) * Math.cos(cameraPitch) * camDist;
+    camera.lookAt(new THREE.Vector3(P.x, 0.75, P.y));
+  }
+
+  // ─ Stars follow player center to feel infinite ─
+  if (starGroup && playerGroup) {
+    starGroup.position.copy(playerGroup.position);
+  }
+
+  // ─ Rain update ─
+  updateRain(dt);
+
+  // ─ Game time progression ─
   gMin += dt * 6;
   if (gMin >= 1440) { gMin -= 1440; dayN++; P.hunger = Math.max(0, P.hunger - 10); }
 
+  // ─ Ambient Lighting & Sky Colors Cycle ─
   const h24        = (gMin / 60) % 24;
   const isNight    = h24 < 6 || h24 > 20;
   const nightFac   = isNight ? 1 : h24 < 8 ? (8 - h24) / 4 : h24 > 18 ? (h24 - 18) / 4 : 0;
   const ambientMul = 1 - nightFac * 0.55;
 
-  // ─ Precompute floor ray directions ─
-  const rdx0 = Math.cos(P.angle - HALF_FOV), rdy0 = Math.sin(P.angle - HALF_FOV);
-  const rdx1 = Math.cos(P.angle + HALF_FOV), rdy1 = Math.sin(P.angle + HALF_FOV);
+  const daySkyColor = new THREE.Color(0x1a2130);
+  const nightSkyColor = new THREE.Color(0x020510);
+  const skyColor = new THREE.Color().lerpColors(daySkyColor, nightSkyColor, nightFac);
 
-  // ════════════════════════════════════════
-  //   SKY  &  FLOOR  (pixel buffer pass)
-  // ════════════════════════════════════════
-  const starSet = new Map(STARS.map(s => [`${s.x},${s.y}`, s]));
+  renderer.setClearColor(skyColor);
+  scene.fog.color.copy(skyColor);
 
-  for (let row = 0; row < RH; row++) {
-    if (row < RH / 2) {
-      // ── Sky ──
-      const t = row / RH;
-      for (let col = 0; col < RW; col++) {
-        const key = `${col},${row}`;
-        if (starSet.has(key)) {
-          const s  = starSet.get(key);
-          const bv = Math.floor((0.5 + Math.sin(ts * 0.0008 + col * 0.3) * 0.5) * s.b * 255);
-          sp(col, row, bv, bv, Math.min(255, bv + 20));
-        } else {
-          const sv = Math.floor(t * 40) * nightFac;
-          sp(col, row,
-            Math.floor(sv * 0.3 * (1 - nightFac)),
-            Math.floor(sv * 0.4 * (1 - nightFac)),
-            Math.floor(5 + sv * 2 + t * 15 * (1 - nightFac * 0.8)));
-        }
-      }
-    } else {
-      // ── Floor casting ──
-      const p       = row - RH / 2;
-      const rowDist = (RH / 2) / p;
-      const fsX = rowDist * (rdx1 - rdx0) / RW;
-      const fsY = rowDist * (rdy1 - rdy0) / RW;
-      let fx = P.x + rowDist * rdx0;
-      let fy = P.y + rowDist * rdy0;
+  // Lights adjustments
+  ambientLight.intensity = 0.15 + (1 - nightFac) * 0.35;
+  dirLight.intensity = 0.15 + (1 - nightFac) * 0.65;
 
-      const fog = Math.max(0, 1 - rowDist / 14);
+  const dayLightCol = new THREE.Color(0xfffaed);
+  const nightLightCol = new THREE.Color(0x00bfff);
+  dirLight.color.lerpColors(dayLightCol, nightLightCol, nightFac);
 
-      for (let col = 0; col < RW; col++) {
-        fx += fsX; fy += fsY;
-        const onRoad = MAP[Math.floor(fy) & 63]?.[Math.floor(fx) & 63] === 0;
-        const f      = Math.floor(fog * (onRoad ? 22 : 28) * ambientMul);
+  // Orbit sun/moon position
+  const sunAngle = (gMin / 1440) * Math.PI * 2 - Math.PI / 2;
+  dirLight.position.set(
+    P.x + Math.cos(sunAngle) * 40,
+    15 + Math.sin(sunAngle) * 30,
+    P.y + Math.sin(sunAngle * 0.5) * 15
+  );
 
-        const fracX = fx - Math.floor(fx), fracY = fy - Math.floor(fy);
-        const isLine = (Math.abs(fracX - 0.5) < 0.03 || Math.abs(fracY - 0.5) < 0.03) && onRoad;
-
-        if (isLine) sp(col, row, Math.floor(f * 2.5), Math.floor(f * 2.5), Math.floor(f * 1.5));
-        else        sp(col, row, Math.floor(f * 0.7), Math.floor(f * 0.7), f);
-      }
-    }
+  // Star opacity fade (visible only at night)
+  if (starGroup) {
+    starGroup.material.opacity = nightFac * 0.85;
   }
 
-  // ════════════════════════════════════════
-  //   WALLS  (raycasting pass)
-  // ════════════════════════════════════════
-  let nearDist = 99, nearHit = 0, nearMX = 0, nearMY = 0;
-
-  for (let col = 0; col < RW; col++) {
-    const rayA = P.angle - HALF_FOV + (col / RW) * FOV;
-    const ray  = castRay(P.x, P.y, rayA);
-    const perp = ray.dist * Math.cos(rayA - P.angle); // fish-eye correction
-
-    if (ray.dist < nearDist && ray.hit > 0) {
-      nearDist = ray.dist; nearHit = ray.hit;
-      nearMX = ray.mapX; nearMY = ray.mapY;
-    }
-    if (ray.hit <= 0) continue;
-
-    const bi = BINFO[ray.hit];
-    if (!bi) continue;
-
-    const [br, bg, bb] = bi.base;
-    const [ar, ag, ab] = bi.acc;
-
-    // Building height scaled by distance from city centre
-    const distFromCentre = Math.sqrt((ray.mapX - MCX) ** 2 + (ray.mapY - MCY) ** 2);
-    const bh     = bHeight(distFromCentre);
-    const wallH  = Math.min(RH * 2.5, Math.floor((RH / perp) * bh));
-    const wallTop = Math.max(0, Math.floor(RH / 2 - wallH / 2));
-    const wallBot = Math.min(RH, Math.floor(RH / 2 + wallH / 2));
-
-    const fog      = Math.max(0, 1 - perp / 16) * ambientMul;
-    const sideMul  = ray.side ? 0.55 : 1.0;
-
-    for (let row = wallTop; row < wallBot; row++) {
-      const wy = (row - wallTop) / (wallBot - wallTop);
-
-      // Deterministic window pattern (hash by map pos + window grid cell)
-      const wc   = Math.floor(ray.wallX * 14);
-      const wr   = Math.floor(wy * 24);
-      const isWin = (wc % 4 < 3) && (wr % 5 < 4);
-      const hash  = Math.abs(Math.sin(ray.mapX * 97.3 + ray.mapY * 131.7 + wc * 53.1 + wr * 23.9));
-      const winLit = isWin && hash > 0.28;
-
-      let r, g, b;
-      if (winLit) {
-        // Lit window — accent colour with glow falloff
-        const wx2 = (wc % 4) / 3, wy2 = (wr % 5) / 4;
-        const glow = 1 - Math.max(Math.abs(wx2 - 0.5), Math.abs(wy2 - 0.5)) * 2;
-        const gm   = Math.max(0.4, glow) * fog + (isNight ? 0.28 : 0);
-        r = Math.min(255, ar * gm + (isNight ? ar * 0.2 : 0));
-        g = Math.min(255, ag * gm + (isNight ? ag * 0.2 : 0));
-        b = Math.min(255, ab * gm + (isNight ? ab * 0.2 : 0));
-      } else if (isWin) {
-        // Dark window
-        r = br * sideMul * 0.25;
-        g = bg * sideMul * 0.25;
-        b = bb * sideMul * 0.25;
-      } else {
-        // Wall surface
-        r = br * sideMul * fog;
-        g = bg * sideMul * fog;
-        b = bb * sideMul * fog;
-        // Subtle accent edge at top/bottom of building
-        if (row === wallTop || row === wallTop + 1 || row === wallBot - 1) {
-          r = Math.min(255, r + ar * fog * 0.18);
-          g = Math.min(255, g + ag * fog * 0.18);
-          b = Math.min(255, b + ab * fog * 0.18);
-        }
-      }
-      sp(col, row, Math.floor(r), Math.floor(g), Math.floor(b));
-    }
+  // Building lights intensity (neon glow)
+  for (let key in bldMaterials) {
+    bldMaterials[key].emissiveIntensity = 0.25 + nightFac * 1.55;
   }
 
-  // ── Blit pixel buffer to canvas ──
-  ctx.putImageData(imgData, 0, 0);
+  // ─ HUD hints for nearest building in screen path ─
+  const lookRay = castRay(P.x, P.y, cameraYaw);
+  const nearDist = lookRay.dist;
+  const nearHit = lookRay.hit;
 
-  // ════════════════════════════════════════
-  //   CANVAS 2D OVERLAY  (rain, HUD hints)
-  // ════════════════════════════════════════
-
-  // Rain streaks
-  ctx.strokeStyle = 'rgba(100,160,255,0.18)';
-  ctx.lineWidth   = 1;
-  RAIN.forEach(r => {
-    r.y += r.spd;
-    if (r.y > RH) { r.y = 0; r.x = Math.random() * RW; }
-    ctx.beginPath();
-    ctx.moveTo(r.x, r.y);
-    ctx.lineTo(r.x - 1, r.y + r.len);
-    ctx.stroke();
-  });
-
-  // ── Nearest building name + interact prompt ──
   const dn = document.getElementById('dist-name');
   const ip = document.getElementById('interact-prompt');
   if (nearDist < 2.2 && nearHit > 0) {
@@ -536,9 +878,9 @@ function render(ts) {
   }
 
   // ════════════════════════════════════════
-  //   MINIMAP
+  //   MINIMAP RENDERING (2D overlay)
   // ════════════════════════════════════════
-  const MS = 100, VIEW = 16; // show 16 tiles around player
+  const MS = 100, VIEW = 16;
   mctx.fillStyle = 'rgba(0,5,15,0.95)';
   mctx.fillRect(0, 0, MS, MS);
 
@@ -583,9 +925,12 @@ function render(ts) {
   if (P.energy < 10) P.happy  = Math.max(0, P.happy  - dt * 0.22);
 
   updateHUD();
+
+  // WebGL Render pass
+  renderer.render(scene, camera);
   requestAnimationFrame(render);
 }
 
 // ── START ──
 requestAnimationFrame(render);
-showNotice('🏙️ 네오폴리스 수도에 오신 것을 환영합니다!');
+showNotice('🏙️ 네오폴리스 수도에 오신 것을 환영합니다! (3D)');
