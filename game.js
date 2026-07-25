@@ -176,11 +176,16 @@ let autoSaveInterval = null;
 async function fetchUser(username) {
   try {
     const res = await fetch(`${DB_URL}users/${encodeURIComponent(username)}.json`);
-    if (!res.ok) throw new Error("네트워크 응답 오류");
+    if (res.status === 401) {
+      throw new Error("PERMISSION_DENIED");
+    }
+    if (!res.ok) {
+      throw new Error("HTTP_ERROR_" + res.status);
+    }
     return await res.json();
   } catch (err) {
     console.error("Firebase fetch error:", err);
-    return null;
+    throw err;
   }
 }
 
@@ -214,6 +219,7 @@ async function saveUser(username, password) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    if (res.status === 401) throw new Error("PERMISSION_DENIED");
     if (!res.ok) throw new Error("데이터 저장 오류");
     
     isCloudConnected = true;
@@ -226,7 +232,11 @@ async function saveUser(username, password) {
     isCloudConnected = false;
     if (cloudDot) {
       cloudDot.className = 'cloud-dot';
-      cloudText.textContent = '저장 실패';
+      if (err.message === "PERMISSION_DENIED") {
+        cloudText.textContent = '권한 없음 (401)';
+      } else {
+        cloudText.textContent = '저장 실패';
+      }
     }
   }
 }
@@ -256,73 +266,83 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     return;
   }
   
-  const usernameRegex = /^[a-zA-Z0-9_]{3,15}$/;
+  // Supports Korean characters (Hangul), English, numbers, and underscores (2-15 characters)
+  const usernameRegex = /^[a-zA-Z0-9가-힣_]{2,15}$/;
   if (!usernameRegex.test(uInput)) {
-    setLoginStatus("아이디는 3~15자의 영문, 숫자, _만 가능합니다.", "error");
+    setLoginStatus("아이디는 2~15자의 한글, 영문, 숫자, _만 가능합니다.", "error");
     return;
   }
 
   setLoginStatus("데이터베이스 연결 중...", "");
   disableLoginInputs(true);
 
-  const userData = await fetchUser(uInput);
-  
-  if (!userData) {
-    setLoginStatus("존재하지 않는 아이디입니다. 회원가입을 해주세요.", "error");
+  try {
+    const userData = await fetchUser(uInput);
+    
+    if (!userData) {
+      setLoginStatus("존재하지 않는 아이디입니다.", "error");
+      disableLoginInputs(false);
+      return;
+    }
+
+    if (userData.password !== pInput) {
+      setLoginStatus("비밀번호가 일치하지 않습니다.", "error");
+      disableLoginInputs(false);
+      return;
+    }
+
+    // Success login
+    currentUsername = uInput;
+    currentPassword = pInput;
+    isCloudConnected = true;
+
+    // Load progress
+    P.x = userData.x !== undefined ? userData.x : 32.5;
+    P.y = userData.y !== undefined ? userData.y : 32.5;
+    P.angle = userData.angle !== undefined ? userData.angle : -Math.PI / 2;
+    P.health = userData.health !== undefined ? userData.health : 100;
+    P.happy = userData.happy !== undefined ? userData.happy : 75;
+    P.hunger = userData.hunger !== undefined ? userData.hunger : 80;
+    P.energy = userData.energy !== undefined ? userData.energy : 100;
+    P.money = userData.money !== undefined ? userData.money : 500000;
+    gMin = userData.gMin !== undefined ? userData.gMin : 480;
+    dayN = userData.dayN !== undefined ? userData.dayN : 1;
+
+    cameraYaw = P.angle;
+
+    if (playerGroup) {
+      playerGroup.position.set(P.x, 0, P.y);
+    }
+
+    updateHUD();
+    
+    // Set cloud HUD state
+    const cloudDot = document.getElementById('cloudDot');
+    const cloudText = document.getElementById('cloudText');
+    if (cloudDot) {
+      cloudDot.className = 'cloud-dot connected';
+      cloudText.textContent = `${currentUsername} (연결됨)`;
+    }
+
+    // Start game
+    document.getElementById('lock-screen').style.display = 'none';
+    c.requestPointerLock();
+    
+    // Start auto-save loop (every 15 seconds)
+    if (autoSaveInterval) clearInterval(autoSaveInterval);
+    autoSaveInterval = setInterval(() => {
+      saveUser(currentUsername, currentPassword);
+    }, 15000);
+
+    showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
+  } catch (err) {
+    if (err.message === "PERMISSION_DENIED") {
+      setLoginStatus("접근 권한이 없습니다. Firebase 규칙(.read/.write)을 true로 설정해 주세요.", "error");
+    } else {
+      setLoginStatus("연결 실패: " + err.message, "error");
+    }
     disableLoginInputs(false);
-    return;
   }
-
-  if (userData.password !== pInput) {
-    setLoginStatus("비밀번호가 일치하지 않습니다.", "error");
-    disableLoginInputs(false);
-    return;
-  }
-
-  // Success login
-  currentUsername = uInput;
-  currentPassword = pInput;
-  isCloudConnected = true;
-
-  // Load progress
-  P.x = userData.x !== undefined ? userData.x : 32.5;
-  P.y = userData.y !== undefined ? userData.y : 32.5;
-  P.angle = userData.angle !== undefined ? userData.angle : -Math.PI / 2;
-  P.health = userData.health !== undefined ? userData.health : 100;
-  P.happy = userData.happy !== undefined ? userData.happy : 75;
-  P.hunger = userData.hunger !== undefined ? userData.hunger : 80;
-  P.energy = userData.energy !== undefined ? userData.energy : 100;
-  P.money = userData.money !== undefined ? userData.money : 500000;
-  gMin = userData.gMin !== undefined ? userData.gMin : 480;
-  dayN = userData.dayN !== undefined ? userData.dayN : 1;
-
-  cameraYaw = P.angle;
-
-  if (playerGroup) {
-    playerGroup.position.set(P.x, 0, P.y);
-  }
-
-  updateHUD();
-  
-  // Set cloud HUD state
-  const cloudDot = document.getElementById('cloudDot');
-  const cloudText = document.getElementById('cloudText');
-  if (cloudDot) {
-    cloudDot.className = 'cloud-dot connected';
-    cloudText.textContent = `${currentUsername} (연결됨)`;
-  }
-
-  // Start game
-  document.getElementById('lock-screen').style.display = 'none';
-  c.requestPointerLock();
-  
-  // Start auto-save loop (every 15 seconds)
-  if (autoSaveInterval) clearInterval(autoSaveInterval);
-  autoSaveInterval = setInterval(() => {
-    saveUser(currentUsername, currentPassword);
-  }, 15000);
-
-  showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
 });
 
 // ── REGISTER BUTTON EVENT LISTENER ──
