@@ -172,6 +172,8 @@ let currentUsername = "";
 let currentPassword = "";
 let isCloudConnected = false;
 let autoSaveInterval = null;
+let isThirdPerson = true;
+let rainIntensity = 0.0;
 
 async function fetchUser(username) {
   try {
@@ -497,6 +499,15 @@ addEventListener('keydown', e => {
   else if (e.key === 'Escape' && locked) document.exitPointerLock();
   if (e.key === 'e' || e.key === 'E') interact();
   
+  if (e.key === 'r' || e.key === 'R') {
+    isThirdPerson = !isThirdPerson;
+    showNotice(isThirdPerson ? "🎥 3인칭 시점으로 변경되었습니다." : "👁️ 1인칭 시점으로 변경되었습니다.");
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) {
+      crosshair.style.display = isThirdPerson ? 'none' : 'block';
+    }
+  }
+
   // Prevent page scroll for navigation keys
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 's', 'a', 'd', 'W', 'S', 'A', 'D'].includes(e.key)) {
     e.preventDefault();
@@ -966,7 +977,7 @@ function createRain() {
 }
 
 function updateRain(dt) {
-  if (!rainParticles) return;
+  if (!rainParticles || !rainParticles.visible) return;
   const positions = rainGeometry.attributes.position.array;
 
   for (let i = 0; i < rainCount; i++) {
@@ -1176,13 +1187,29 @@ function render(ts) {
     }
   }
 
-  // ─ Camera position tracking 3rd person ─
+  // ── Camera position tracking (1st / 3rd Person Toggle) ──
   if (camera) {
-    const camDist = 4.2;
-    camera.position.x = P.x - Math.sin(cameraYaw) * Math.cos(cameraPitch) * camDist;
-    camera.position.y = 0.8 + Math.sin(cameraPitch) * camDist;
-    camera.position.z = P.y - Math.cos(cameraYaw) * Math.cos(cameraPitch) * camDist;
-    camera.lookAt(new THREE.Vector3(P.x, 0.75, P.y));
+    if (isThirdPerson) {
+      if (playerGroup) playerGroup.visible = true;
+      const camDist = 4.2;
+      let camX = P.x - Math.sin(cameraYaw) * Math.cos(cameraPitch) * camDist;
+      let camY = 0.8 + Math.sin(cameraPitch) * camDist;
+      let camZ = P.y - Math.cos(cameraYaw) * Math.cos(cameraPitch) * camDist;
+      
+      // Prevent camera from going underground (minimum height 0.18)
+      camY = Math.max(0.18, camY);
+      
+      camera.position.set(camX, camY, camZ);
+      camera.lookAt(new THREE.Vector3(P.x, 0.75, P.y));
+    } else {
+      if (playerGroup) playerGroup.visible = false;
+      // Head level height is 1.25 units
+      camera.position.set(P.x, 1.25, P.y);
+      const targetX = P.x + Math.sin(cameraYaw) * Math.cos(cameraPitch);
+      const targetY = 1.25 + Math.sin(cameraPitch);
+      const targetZ = P.y + Math.cos(cameraYaw) * Math.cos(cameraPitch);
+      camera.lookAt(new THREE.Vector3(targetX, targetY, targetZ));
+    }
   }
 
   // ─ Stars follow player center to feel infinite ─
@@ -1190,7 +1217,18 @@ function render(ts) {
     starGroup.position.copy(playerGroup.position);
   }
 
-  // ─ Rain update ─
+  // ─ Dynamic Weather Cycle (Rain) ─
+  const weatherVal = Math.sin(gMin * 0.005) * Math.cos(dayN * 0.7);
+  const targetRain = weatherVal > 0.65 ? 1.0 : 0.0;
+  // Smoothly fade rain in/out
+  rainIntensity += (targetRain - rainIntensity) * dt * 0.15;
+  
+  if (rainParticles) {
+    rainParticles.visible = rainIntensity >= 0.01;
+    if (rainParticles.visible) {
+      rainParticles.material.opacity = rainIntensity * 0.5;
+    }
+  }
   updateRain(dt);
 
   // ─ Game time progression ─
@@ -1203,16 +1241,25 @@ function render(ts) {
   const nightFac   = isNight ? 1 : h24 < 8 ? (8 - h24) / 4 : h24 > 18 ? (h24 - 18) / 4 : 0;
   const ambientMul = 1 - nightFac * 0.55;
 
-  const daySkyColor = new THREE.Color(0x1a2130);
-  const nightSkyColor = new THREE.Color(0x020510);
+  // Vibrant day sky blue vs deep cyber night sky
+  const daySkyColor = new THREE.Color(0x22629b);
+  const nightSkyColor = new THREE.Color(0x01030a);
   const skyColor = new THREE.Color().lerpColors(daySkyColor, nightSkyColor, nightFac);
+
+  // Darken and desaturate sky when raining
+  if (rainIntensity > 0.01) {
+    skyColor.lerp(new THREE.Color(0x0d1117), rainIntensity * 0.7);
+  }
 
   renderer.setClearColor(skyColor);
   scene.fog.color.copy(skyColor);
 
-  // Lights adjustments
-  ambientLight.intensity = 0.15 + (1 - nightFac) * 0.35;
-  dirLight.intensity = 0.15 + (1 - nightFac) * 0.65;
+  // Make fog thicker during rain
+  scene.fog.density = 0.04 + nightFac * 0.06 + rainIntensity * 0.08;
+
+  // Lights adjustments (Dim sun during rain)
+  ambientLight.intensity = 0.15 + (1 - nightFac) * 0.55 - rainIntensity * 0.15;
+  dirLight.intensity = 0.15 + (1 - nightFac) * 0.85 - rainIntensity * 0.6;
 
   const dayLightCol = new THREE.Color(0xfffaed);
   const nightLightCol = new THREE.Color(0x00bfff);
@@ -1226,9 +1273,9 @@ function render(ts) {
     P.y + Math.sin(sunAngle * 0.5) * 15
   );
 
-  // Star opacity fade (visible only at night)
+  // Star opacity fade (visible only at night, hidden when raining)
   if (starGroup) {
-    starGroup.material.opacity = nightFac * 0.85;
+    starGroup.material.opacity = nightFac * (1 - rainIntensity) * 0.85;
   }
 
   // Building lights intensity (neon glow)
