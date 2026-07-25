@@ -491,6 +491,7 @@ c.addEventListener('touchend', () => {
 });
 
 addEventListener('keydown', e => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
   K[e.key] = true;
   if (e.key === 'Escape' && dlgOpen) closeDialog();
   else if (e.key === 'Escape' && locked) document.exitPointerLock();
@@ -501,7 +502,10 @@ addEventListener('keydown', e => {
     e.preventDefault();
   }
 });
-addEventListener('keyup', e => { K[e.key] = false; });
+addEventListener('keyup', e => { 
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  K[e.key] = false; 
+});
 
 // ── DIALOG ──
 function openDialog(name, text, items) {
