@@ -34,6 +34,7 @@
 
     <div id="district-hud">
       <div class="dname" id="dname">중앙 광장</div>
+      <div id="cloud-hud"><span class="cloud-dot" id="cloudDot">●</span> <span id="cloudText">로컬 모드</span></div>
     </div>
 
     <canvas id="minimap" width="100" height="100"></canvas>
@@ -51,9 +52,25 @@
     <div class="logo-wrap">
       <div class="logo-icon">N</div>
       <h1>네오폴리스</h1>
-      <p>NEOPOLIS — 네오리아 수도 · 1인칭 탐험</p>
+      <p>NEOPOLIS — 네오리아 수도 · 3D 클라우드 탐험</p>
     </div>
-    <button class="start-btn" id="startBtn">▶ 탐험 시작</button>
+    
+    <div id="login-container">
+      <div class="input-group">
+        <label for="username">유저 아이디</label>
+        <input type="text" id="username" placeholder="아이디를 입력하세요..." maxlength="15">
+      </div>
+      <div class="input-group">
+        <label for="password">비밀번호</label>
+        <input type="password" id="password" placeholder="비밀번호를 입력하세요...">
+      </div>
+      <div class="btn-group">
+        <button id="loginBtn" class="form-btn login-btn">로그인</button>
+        <button id="registerBtn" class="form-btn register-btn">회원가입</button>
+      </div>
+      <div id="login-status" class="status-msg">아이디와 비밀번호를 입력해 주세요.</div>
+    </div>
+
     <div class="controls">
       <div><span>W A S D / ↑ ↓ ← →</span> 캐릭터 이동</div>
       <div><span>마우스</span> 카메라 시점 회전 (마우스 잠금)</div>

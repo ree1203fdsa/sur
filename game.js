@@ -166,22 +166,308 @@ function cap(v, lo = 0, hi = 100) { return Math.max(lo, Math.min(hi, v)); }
 // ── INPUT ──
 const K = {};
 
-document.getElementById('startBtn').addEventListener('click', () => {
+// ── FIREBASE REALTIME DATABASE CONFIG & HELPERS ──
+const DB_URL = "https://our-nation-22b63-default-rtdb.asia-southeast1.firebasedatabase.app/";
+let currentUsername = "";
+let currentPassword = "";
+let isCloudConnected = false;
+let autoSaveInterval = null;
+
+async function fetchUser(username) {
+  try {
+    const res = await fetch(`${DB_URL}users/${encodeURIComponent(username)}.json`);
+    if (!res.ok) throw new Error("네트워크 응답 오류");
+    return await res.json();
+  } catch (err) {
+    console.error("Firebase fetch error:", err);
+    return null;
+  }
+}
+
+async function saveUser(username, password) {
+  if (!username) return;
+  const cloudDot = document.getElementById('cloudDot');
+  const cloudText = document.getElementById('cloudText');
+  
+  if (cloudDot) {
+    cloudDot.className = 'cloud-dot saving';
+    cloudText.textContent = '클라우드 저장 중...';
+  }
+
+  const payload = {
+    password: password,
+    x: P.x,
+    y: P.y,
+    angle: P.angle,
+    health: P.health,
+    happy: P.happy,
+    hunger: P.hunger,
+    energy: P.energy,
+    money: P.money,
+    gMin: gMin,
+    dayN: dayN
+  };
+
+  try {
+    const res = await fetch(`${DB_URL}users/${encodeURIComponent(username)}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error("데이터 저장 오류");
+    
+    isCloudConnected = true;
+    if (cloudDot) {
+      cloudDot.className = 'cloud-dot connected';
+      cloudText.textContent = `${username} (저장됨)`;
+    }
+  } catch (err) {
+    console.error("Firebase save error:", err);
+    isCloudConnected = false;
+    if (cloudDot) {
+      cloudDot.className = 'cloud-dot';
+      cloudText.textContent = '저장 실패';
+    }
+  }
+}
+
+function setLoginStatus(msg, type = "") {
+  const el = document.getElementById('login-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'status-msg';
+  if (type) el.classList.add(type);
+}
+
+function disableLoginInputs(disabled) {
+  ['username', 'password', 'loginBtn', 'registerBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
+}
+
+// ── LOGIN BUTTON EVENT LISTENER ──
+document.getElementById('loginBtn').addEventListener('click', async () => {
+  const uInput = document.getElementById('username').value.trim();
+  const pInput = document.getElementById('password').value.trim();
+  
+  if (!uInput || !pInput) {
+    setLoginStatus("아이디와 비밀번호를 모두 입력해 주세요.", "error");
+    return;
+  }
+  
+  const usernameRegex = /^[a-zA-Z0-9_]{3,15}$/;
+  if (!usernameRegex.test(uInput)) {
+    setLoginStatus("아이디는 3~15자의 영문, 숫자, _만 가능합니다.", "error");
+    return;
+  }
+
+  setLoginStatus("데이터베이스 연결 중...", "");
+  disableLoginInputs(true);
+
+  const userData = await fetchUser(uInput);
+  
+  if (!userData) {
+    setLoginStatus("존재하지 않는 아이디입니다. 회원가입을 해주세요.", "error");
+    disableLoginInputs(false);
+    return;
+  }
+
+  if (userData.password !== pInput) {
+    setLoginStatus("비밀번호가 일치하지 않습니다.", "error");
+    disableLoginInputs(false);
+    return;
+  }
+
+  // Success login
+  currentUsername = uInput;
+  currentPassword = pInput;
+  isCloudConnected = true;
+
+  // Load progress
+  P.x = userData.x !== undefined ? userData.x : 32.5;
+  P.y = userData.y !== undefined ? userData.y : 32.5;
+  P.angle = userData.angle !== undefined ? userData.angle : -Math.PI / 2;
+  P.health = userData.health !== undefined ? userData.health : 100;
+  P.happy = userData.happy !== undefined ? userData.happy : 75;
+  P.hunger = userData.hunger !== undefined ? userData.hunger : 80;
+  P.energy = userData.energy !== undefined ? userData.energy : 100;
+  P.money = userData.money !== undefined ? userData.money : 500000;
+  gMin = userData.gMin !== undefined ? userData.gMin : 480;
+  dayN = userData.dayN !== undefined ? userData.dayN : 1;
+
+  cameraYaw = P.angle;
+
+  if (playerGroup) {
+    playerGroup.position.set(P.x, 0, P.y);
+  }
+
+  updateHUD();
+  
+  // Set cloud HUD state
+  const cloudDot = document.getElementById('cloudDot');
+  const cloudText = document.getElementById('cloudText');
+  if (cloudDot) {
+    cloudDot.className = 'cloud-dot connected';
+    cloudText.textContent = `${currentUsername} (연결됨)`;
+  }
+
+  // Start game
   document.getElementById('lock-screen').style.display = 'none';
   c.requestPointerLock();
+  
+  // Start auto-save loop (every 15 seconds)
+  if (autoSaveInterval) clearInterval(autoSaveInterval);
+  autoSaveInterval = setInterval(() => {
+    saveUser(currentUsername, currentPassword);
+  }, 15000);
+
+  showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
+});
+
+// ── REGISTER BUTTON EVENT LISTENER ──
+document.getElementById('registerBtn').addEventListener('click', async () => {
+  setLoginStatus("현재 회원가입이 비활성화되어 있습니다. 지정된 계정으로 로그인해 주세요.", "error");
+  return;
+  
+  const uInput = document.getElementById('username').value.trim();
+  const pInput = document.getElementById('password').value.trim();
+  
+  if (!uInput || !pInput) {
+    setLoginStatus("아이디와 비밀번호를 모두 입력해 주세요.", "error");
+    return;
+  }
+
+  const usernameRegex = /^[a-zA-Z0-9_]{3,15}$/;
+  if (!usernameRegex.test(uInput)) {
+    setLoginStatus("아이디는 3~15자의 영문, 숫자, _만 가능합니다.", "error");
+    return;
+  }
+  
+  if (pInput.length < 4) {
+    setLoginStatus("비밀번호는 최소 4자 이상이어야 합니다.", "error");
+    return;
+  }
+
+  setLoginStatus("아이디 중복 검사 중...", "");
+  disableLoginInputs(true);
+
+  const userData = await fetchUser(uInput);
+  
+  if (userData) {
+    setLoginStatus("이미 존재하는 아이디입니다.", "error");
+    disableLoginInputs(false);
+    return;
+  }
+
+  setLoginStatus("프로필 생성 중...", "success");
+
+  // Success register, create new account with default starting stats
+  currentUsername = uInput;
+  currentPassword = pInput;
+  isCloudConnected = true;
+
+  // Initialize defaults
+  P.x = 32.5;
+  P.y = 32.5;
+  P.angle = -Math.PI / 2;
+  P.health = 100;
+  P.happy = 75;
+  P.hunger = 80;
+  P.energy = 100;
+  P.money = 500000;
+  gMin = 480;
+  dayN = 1;
+
+  cameraYaw = P.angle;
+
+  if (playerGroup) {
+    playerGroup.position.set(P.x, 0, P.y);
+  }
+
+  updateHUD();
+
+  // Save to Firebase immediately
+  await saveUser(currentUsername, currentPassword);
+
+  // Start game
+  document.getElementById('lock-screen').style.display = 'none';
+  c.requestPointerLock();
+  
+  // Start auto-save loop
+  if (autoSaveInterval) clearInterval(autoSaveInterval);
+  autoSaveInterval = setInterval(() => {
+    saveUser(currentUsername, currentPassword);
+  }, 15000);
+
+  showNotice(`🏙️ 회원가입 완료! 환영합니다, ${currentUsername}님!`);
 });
 
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === c;
 });
 
-document.addEventListener('mousemove', e => {
+let isDragging = false;
+let prevMouseX = 0;
+let prevMouseY = 0;
+
+// Mouse Drag-to-Rotate or Pointer Lock
+c.addEventListener('mousedown', e => {
+  if (document.getElementById('lock-screen').style.display !== 'none') return;
+  isDragging = true;
+  prevMouseX = e.clientX;
+  prevMouseY = e.clientY;
+});
+
+window.addEventListener('mousemove', e => {
   if (locked && !dlgOpen) {
     cameraYaw += e.movementX * 0.0025;
     cameraPitch -= e.movementY * 0.0025;
     cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
     P.angle = cameraYaw;
+  } else if (isDragging && !dlgOpen) {
+    const deltaX = e.clientX - prevMouseX;
+    const deltaY = e.clientY - prevMouseY;
+    prevMouseX = e.clientX;
+    prevMouseY = e.clientY;
+
+    cameraYaw += deltaX * 0.005;
+    cameraPitch -= deltaY * 0.005;
+    cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
+    P.angle = cameraYaw;
   }
+});
+
+window.addEventListener('mouseup', () => {
+  isDragging = false;
+});
+
+// Touch Drag-to-Rotate (mobile)
+c.addEventListener('touchstart', e => {
+  if (document.getElementById('lock-screen').style.display !== 'none') return;
+  if (e.touches.length === 1) {
+    isDragging = true;
+    prevMouseX = e.touches[0].clientX;
+    prevMouseY = e.touches[0].clientY;
+  }
+}, { passive: true });
+
+c.addEventListener('touchmove', e => {
+  if (isDragging && !dlgOpen && e.touches.length === 1) {
+    const deltaX = e.touches[0].clientX - prevMouseX;
+    const deltaY = e.touches[0].clientY - prevMouseY;
+    prevMouseX = e.touches[0].clientX;
+    prevMouseY = e.touches[0].clientY;
+
+    cameraYaw += deltaX * 0.006;
+    cameraPitch -= deltaY * 0.006;
+    cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
+    P.angle = cameraYaw;
+  }
+}, { passive: true });
+
+c.addEventListener('touchend', () => {
+  isDragging = false;
 });
 
 addEventListener('keydown', e => {
@@ -212,7 +498,11 @@ function openDialog(name, text, items) {
     const btn = document.createElement('button');
     btn.className  = 'dbtn';
     btn.textContent = item.label;
-    btn.onclick = () => { showNotice(item.fn(P)); updateHUD(); };
+    btn.onclick = () => { 
+      showNotice(item.fn(P)); 
+      updateHUD(); 
+      if (currentUsername) saveUser(currentUsername, currentPassword);
+    };
     ic.appendChild(btn);
   });
 
@@ -256,7 +546,7 @@ function interact() {
 
 // ── COLLISION ──
 function canMove(nx, ny) {
-  const pad = 0.28;
+  const pad = 0.16;
   return [[-pad, -pad], [pad, -pad], [-pad, pad], [pad, pad]].every(([cx, cy]) => {
     const tx = Math.floor(nx + cx), ty = Math.floor(ny + cy);
     return tx >= 0 && tx < MW && ty >= 0 && ty < MH && MAP[ty][tx] === 0;
@@ -769,7 +1059,7 @@ function render(ts) {
 
   // ─ Movement ─
   let isMoving = false;
-  if (!dlgOpen && locked) {
+  if (!dlgOpen) {
     const spd = 4.2 * dt;
     let moveX = 0, moveZ = 0;
 

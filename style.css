@@ -12,7 +12,7 @@
 body {
   background: #000;
   overflow: hidden;
-  cursor: none;
+  cursor: default;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
@@ -351,26 +351,131 @@ body {
   text-transform: uppercase;
 }
 
-.start-btn {
-  background: rgba(0, 200, 255, .12);
-  border: 1px solid rgba(0, 200, 255, .5);
+#login-container {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 320px;
+  background: rgba(0, 5, 18, 0.85);
+  border: 1px solid rgba(0, 200, 255, 0.3);
   border-radius: 10px;
-  padding: 16px 52px;
-  color: #00c8ff;
-  font-size: 16px;
+  padding: 22px 24px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 0 28px rgba(0, 200, 255, 0.12);
+  pointer-events: all;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.input-group label {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(0, 200, 255, 0.6);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.input-group input {
+  background: rgba(0, 2, 8, 0.65);
+  border: 1px solid rgba(0, 200, 255, 0.18);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.input-group input:focus {
+  outline: none;
+  border-color: #00c8ff;
+  box-shadow: 0 0 12px rgba(0, 200, 255, 0.35);
+}
+
+.btn-group {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+.form-btn {
+  flex: 1;
+  padding: 11px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  text-shadow: 0 0 12px #00c8ff;
-  letter-spacing: .12em;
-  box-shadow: 0 0 28px rgba(0, 200, 255, .14);
-  pointer-events: all;
+  transition: all 0.2s;
   font-family: inherit;
-  transition: background .2s, box-shadow .2s;
-  margin-bottom: 32px;
 }
-.start-btn:hover {
-  background: rgba(0, 200, 255, .28);
-  box-shadow: 0 0 48px rgba(0, 200, 255, .28);
+.login-btn {
+  background: rgba(0, 200, 255, 0.12);
+  border: 1px solid rgba(0, 200, 255, 0.5);
+  color: #00c8ff;
+  text-shadow: 0 0 8px rgba(0, 200, 255, 0.5);
+}
+.login-btn:hover {
+  background: rgba(0, 200, 255, 0.28);
+  box-shadow: 0 0 18px rgba(0, 200, 255, 0.35);
+}
+.register-btn {
+  background: rgba(255, 176, 48, 0.06);
+  border: 1px solid rgba(255, 176, 48, 0.3);
+  color: #ffb030;
+  text-shadow: 0 0 8px rgba(255, 176, 48, 0.5);
+}
+.register-btn:hover {
+  background: rgba(255, 176, 48, 0.2);
+  box-shadow: 0 0 18px rgba(255, 176, 48, 0.35);
+}
+
+.status-msg {
+  font-size: 11px;
+  color: rgba(200, 212, 234, 0.4);
+  text-align: center;
+  margin-top: 4px;
+  min-height: 16px;
+  line-height: 1.4;
+}
+.status-msg.error {
+  color: #ff4560;
+  text-shadow: 0 0 8px rgba(255, 69, 96, 0.3);
+}
+.status-msg.success {
+  color: #00e676;
+  text-shadow: 0 0 8px rgba(0, 230, 118, 0.35);
+}
+
+/* ── CLOUD SAVE HUD INDICATOR ── */
+#cloud-hud {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 4px;
+  letter-spacing: 0.08em;
+}
+.cloud-dot {
+  font-size: 8px;
+  color: rgba(255, 255, 255, 0.25);
+  transition: color 0.3s, text-shadow 0.3s;
+}
+.cloud-dot.connected {
+  color: #00e676;
+  text-shadow: 0 0 8px #00e676;
+}
+.cloud-dot.saving {
+  color: #ffb030;
+  text-shadow: 0 0 8px #ffb030;
+  animation: pulseCloud 0.8s infinite alternate;
+}
+
+@keyframes pulseCloud {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
 }
 
 .controls {
