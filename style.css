@@ -1,0 +1,414 @@
+/* ==========================================
+   네오폴리스 — 수도 1인칭 탐험
+   style.css
+   ========================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #000;
+  overflow: hidden;
+  cursor: none;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ── GAME CANVAS ── */
+#c {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ── HUD OVERLAY ── */
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Crosshair */
+#crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  display: none;
+}
+#crosshair::before,
+#crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(0, 200, 255, 0.85);
+  border-radius: 2px;
+}
+#crosshair::before {
+  width: 2px;
+  height: 24px;
+  left: 11px;
+  top: 0;
+}
+#crosshair::after {
+  width: 24px;
+  height: 2px;
+  left: 0;
+  top: 11px;
+}
+
+/* Building name (center) */
+#dist-name {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, 44px);
+  color: #00c8ff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px #00c8ff, 0 0 4px #00c8ff;
+  opacity: 0;
+  transition: opacity .3s;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* Interact prompt */
+#interact-prompt {
+  position: absolute;
+  bottom: 28%;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ffb030;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-shadow: 0 0 12px #ffb030;
+  display: none;
+}
+
+/* ── STATS (bottom-left) ── */
+#stats {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.srow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.sico {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+.sbg {
+  width: 100px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sfg {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .4s ease;
+}
+.sval {
+  color: rgba(255, 255, 255, 0.45);
+  width: 28px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── MONEY (bottom-right area) ── */
+#money-hud {
+  position: absolute;
+  bottom: 20px;
+  right: 130px;
+  text-align: right;
+}
+#money-hud .label {
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.3);
+}
+#money-hud .amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffb030;
+  text-shadow: 0 0 14px rgba(255, 176, 48, .55);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── TIME (top-center) ── */
+#time-hud {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+#time-hud .t {
+  font-size: 22px;
+  font-weight: 700;
+  color: #00c8ff;
+  text-shadow: 0 0 18px #00c8ff;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .06em;
+}
+#time-hud .d {
+  font-size: 10px;
+  color: rgba(0, 200, 255, .45);
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+/* ── DISTRICT NAME (top-left) ── */
+#district-hud {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(0, 5, 18, 0.72);
+  border: 1px solid rgba(0, 200, 255, .2);
+  border-radius: 6px;
+  padding: 6px 14px;
+  backdrop-filter: blur(6px);
+}
+#district-hud .dname {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00c8ff;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+/* ── MINIMAP (bottom-right) ── */
+#minimap {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  border: 1px solid rgba(0, 200, 255, .28);
+  border-radius: 5px;
+  background: rgba(0, 5, 15, .92);
+}
+
+/* ── DIALOG ── */
+#dialog {
+  position: fixed;
+  bottom: 18%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: none;
+  background: rgba(0, 5, 20, 0.96);
+  border: 1px solid rgba(0, 200, 255, .46);
+  border-radius: 12px;
+  padding: 20px 26px;
+  min-width: 360px;
+  max-width: 520px;
+  backdrop-filter: blur(18px);
+  box-shadow: 0 0 48px rgba(0, 200, 255, .16);
+}
+#dn {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: #00c8ff;
+  margin-bottom: 8px;
+}
+#dt {
+  font-size: 13px;
+  color: #c0d0e8;
+  line-height: 1.75;
+  margin-bottom: 14px;
+}
+#di {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.dbtn {
+  background: rgba(0, 200, 255, .08);
+  border: 1px solid rgba(0, 200, 255, .22);
+  border-radius: 6px;
+  padding: 9px 16px;
+  color: #c0d0e8;
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: all;
+  text-align: left;
+  transition: background .15s, border-color .15s;
+  font-family: inherit;
+}
+.dbtn:hover {
+  background: rgba(0, 200, 255, .22);
+  border-color: #00c8ff;
+  color: #fff;
+}
+.dbtn.cl {
+  border-color: rgba(255, 255, 255, .08);
+  color: #3a4a6a;
+}
+.dbtn.cl:hover {
+  background: rgba(255,255,255,.04);
+  color: #6a7a9a;
+}
+
+/* ── NOTICE TOAST ── */
+#notice {
+  position: fixed;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  background: rgba(0, 200, 255, .1);
+  border: 1px solid rgba(0, 200, 255, .42);
+  border-radius: 8px;
+  padding: 9px 22px;
+  color: #00c8ff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+  white-space: nowrap;
+  text-align: center;
+  letter-spacing: .04em;
+}
+
+/* ── LOCK / START SCREEN ── */
+#lock-screen {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 5, 20, .97);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  cursor: pointer;
+  gap: 0;
+}
+
+/* Grid background on lock screen */
+#lock-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0,200,255,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,200,255,.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+}
+
+.logo-wrap {
+  text-align: center;
+  margin-bottom: 36px;
+}
+.logo-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: rgba(0, 200, 255, .1);
+  border: 2px solid rgba(0, 200, 255, .4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 900;
+  color: #00c8ff;
+  text-shadow: 0 0 20px #00c8ff;
+  margin: 0 auto 16px;
+  box-shadow: 0 0 32px rgba(0,200,255,.18);
+}
+#lock-screen h1 {
+  font-size: clamp(32px, 5vw, 56px);
+  font-weight: 800;
+  color: #00c8ff;
+  text-shadow: 0 0 40px #00c8ff, 0 0 12px #00c8ff;
+  letter-spacing: .04em;
+  margin-bottom: 8px;
+}
+#lock-screen p {
+  color: rgba(200, 212, 234, .45);
+  font-size: 13px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.start-btn {
+  background: rgba(0, 200, 255, .12);
+  border: 1px solid rgba(0, 200, 255, .5);
+  border-radius: 10px;
+  padding: 16px 52px;
+  color: #00c8ff;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  text-shadow: 0 0 12px #00c8ff;
+  letter-spacing: .12em;
+  box-shadow: 0 0 28px rgba(0, 200, 255, .14);
+  pointer-events: all;
+  font-family: inherit;
+  transition: background .2s, box-shadow .2s;
+  margin-bottom: 32px;
+}
+.start-btn:hover {
+  background: rgba(0, 200, 255, .28);
+  box-shadow: 0 0 48px rgba(0, 200, 255, .28);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 32px;
+  font-size: 12px;
+  color: rgba(200, 212, 234, .35);
+  margin-bottom: 32px;
+  text-align: left;
+}
+.controls span {
+  color: rgba(0, 200, 255, .7);
+  font-weight: 600;
+}
+
+/* City stats row on start screen */
+.city-stats {
+  display: flex;
+  gap: 32px;
+  border-top: 1px solid rgba(0,200,255,.1);
+  padding-top: 24px;
+}
+.cs-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.cs-val {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffb030;
+  font-variant-numeric: tabular-nums;
+}
+.cs-label {
+  font-size: 10px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgba(200,212,234,.3);
+}

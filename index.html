@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>네오폴리스 — 수도 1인칭 탐험</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <canvas id="c"></canvas>
+
+  <div id="hud">
+    <div id="crosshair"></div>
+    <div id="dist-name"></div>
+    <div id="interact-prompt">[E] 상호작용</div>
+
+    <div id="stats">
+      <div class="srow"><span class="sico">❤️</span><div class="sbg"><div class="sfg" id="bh" style="width:100%;background:#ff4560"></div></div><span class="sval" id="nh">100</span></div>
+      <div class="srow"><span class="sico">😊</span><div class="sbg"><div class="sfg" id="bp" style="width:75%;background:#00c8ff"></div></div><span class="sval" id="np">75</span></div>
+      <div class="srow"><span class="sico">🍔</span><div class="sbg"><div class="sfg" id="bf" style="width:80%;background:#ffb030"></div></div><span class="sval" id="nf">80</span></div>
+      <div class="srow"><span class="sico">⚡</span><div class="sbg"><div class="sfg" id="be" style="width:100%;background:#00e676"></div></div><span class="sval" id="ne">100</span></div>
+    </div>
+
+    <div id="money-hud">
+      <div class="label">잔고</div>
+      <div class="amount">₦<span id="mv">500,000</span></div>
+    </div>
+
+    <div id="time-hud">
+      <div class="t" id="tv">08:00</div>
+      <div class="d" id="td">1일차</div>
+    </div>
+
+    <div id="district-hud">
+      <div class="dname" id="dname">중앙 광장</div>
+    </div>
+
+    <canvas id="minimap" width="100" height="100"></canvas>
+  </div>
+
+  <div id="dialog">
+    <div id="dn"></div>
+    <div id="dt"></div>
+    <div id="di"></div>
+  </div>
+
+  <div id="notice"></div>
+
+  <div id="lock-screen">
+    <div class="logo-wrap">
+      <div class="logo-icon">N</div>
+      <h1>네오폴리스</h1>
+      <p>NEOPOLIS — 네오리아 수도 · 1인칭 탐험</p>
+    </div>
+    <button class="start-btn" id="startBtn">▶ 탐험 시작</button>
+    <div class="controls">
+      <div><span>W A S D / ↑ ↓ ← →</span> 캐릭터 이동</div>
+      <div><span>마우스</span> 카메라 시점 회전 (마우스 잠금)</div>
+      <div><span>E</span> 상호작용</div>
+      <div><span>ESC</span> 메뉴 / 마우스 잠금 해제</div>
+    </div>
+    <div class="city-stats">
+      <div class="cs-item"><span class="cs-val">5,280,000</span><span class="cs-label">인구</span></div>
+      <div class="cs-item"><span class="cs-val">86.7%</span><span class="cs-label">행복도</span></div>
+      <div class="cs-item"><span class="cs-val">AAA</span><span class="cs-label">신용등급</span></div>
+      <div class="cs-item"><span class="cs-val">1.8%</span><span class="cs-label">범죄율</span></div>
+    </div>
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
