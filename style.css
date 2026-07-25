@@ -517,3 +517,593 @@ body {
   text-transform: uppercase;
   color: rgba(200,212,234,.3);
 }
+
+/* ==========================================================
+   🏛️ PRESIDENTIAL DASHBOARD & GLASSMORPHISM UI STYLES
+   ========================================================== */
+
+/* Core Glassmorphism Template */
+.glass-panel {
+  background: rgba(4, 10, 24, 0.75);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid rgba(0, 229, 255, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px 0 rgba(0, 5, 20, 0.45), 0 0 16px rgba(0, 229, 255, 0.05);
+  color: #c0d0e8;
+  pointer-events: auto;
+}
+
+/* Presidential Dashboard Layout */
+#dashboard {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 90vw;
+  height: 85vh;
+  z-index: 100;
+  display: none; /* Hidden by default */
+  flex-direction: column;
+  overflow: hidden;
+  animation: scaleUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes scaleUp {
+  from { transform: translate(-50%, -50%) scale(0.95); opacity: 0; }
+  to { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
+
+/* Dashboard Header */
+.db-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.15);
+  background: rgba(2, 6, 16, 0.5);
+}
+.db-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.db-icon {
+  font-size: 28px;
+}
+.db-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #00e5ff;
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.25);
+  margin: 0;
+}
+.db-subtitle {
+  font-size: 10px;
+  color: rgba(0, 229, 255, 0.45);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.close-db-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 26px;
+  cursor: pointer;
+  transition: color 0.2s, transform 0.2s;
+}
+.close-db-btn:hover {
+  color: #ff4560;
+  transform: scale(1.1);
+}
+
+/* Dashboard Tabs */
+.db-tabs {
+  display: flex;
+  background: rgba(2, 6, 16, 0.3);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.1);
+  padding: 0 12px;
+}
+.db-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 12px 18px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.db-tab-btn:hover {
+  color: #00e5ff;
+  background: rgba(0, 229, 255, 0.03);
+}
+.db-tab-btn.active {
+  color: #00e5ff;
+  border-bottom-color: #00e5ff;
+  background: rgba(0, 229, 255, 0.05);
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+
+/* Dashboard Body & Content */
+.db-body {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+.db-tab-content {
+  display: none;
+  height: 100%;
+}
+.db-tab-content.active {
+  display: block;
+  animation: fadeIn 0.25s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Dashboard Grid Utilities */
+.db-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.db-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.db-grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.mt-16 { margin-top: 16px; }
+.mb-12 { margin-bottom: 12px; }
+
+/* Dashboard Cards */
+.db-card {
+  background: rgba(5, 12, 28, 0.6);
+  border: 1px solid rgba(0, 229, 255, 0.08);
+  border-radius: 8px;
+  padding: 18px;
+  position: relative;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.db-card:hover {
+  border-color: rgba(0, 229, 255, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 229, 255, 0.03);
+}
+.card-icon {
+  font-size: 22px;
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  opacity: 0.6;
+}
+.card-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.card-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stat Colors */
+.text-green { color: #00e676 !important; }
+.text-orange { color: #ffb030 !important; }
+.text-red { color: #ff4560 !important; }
+.bg-cyan { background: #00e5ff; }
+.bg-green { background: #00e676; }
+
+/* Progress bar widgets */
+.stat-card h4 {
+  font-size: 12px;
+  margin-bottom: 12px;
+  color: rgba(255,255,255,0.7);
+}
+.progress-bar-container {
+  background: rgba(255, 255, 255, 0.06);
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+.progress-val {
+  text-align: right;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+/* Info Rows */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.info-row:last-child {
+  border-bottom: none;
+}
+.info-row span {
+  color: rgba(255, 255, 255, 0.45);
+}
+.info-row span:last-child {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Scroll Card */
+.scroll-card {
+  overflow-y: auto;
+}
+
+/* Slider Controls */
+.slider-group {
+  margin-bottom: 16px;
+}
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.slider-header label {
+  color: #fff;
+  font-weight: 600;
+}
+.slider-header span {
+  color: #00e5ff;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+  margin: 8px 0;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00e5ff;
+  box-shadow: 0 0 6px #00e5ff;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.alert {
+  padding: 10px 14px;
+  border-radius: 6px;
+  font-size: 11px;
+  margin-top: 14px;
+  line-height: 1.5;
+}
+.alert-info {
+  background: rgba(0, 229, 255, 0.06);
+  border: 1px solid rgba(0, 229, 255, 0.18);
+  color: rgba(0, 229, 255, 0.8);
+}
+.total-allocation-bar {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px;
+}
+.total-allocation-bar strong {
+  color: #00e5ff;
+}
+
+/* Citizens Tab Table Design */
+.filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.filter-bar input[type="text"] {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  border-radius: 6px;
+  padding: 8px 14px;
+  color: #fff;
+  font-size: 12px;
+  width: 240px;
+  outline: none;
+}
+.filter-bar input[type="text"]:focus {
+  border-color: #00e5ff;
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.15);
+}
+.citizen-count-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+.table-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 480px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 229, 255, 0.08);
+}
+.db-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  text-align: left;
+}
+.db-table th, .db-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.db-table th {
+  background: rgba(2, 6, 16, 0.7);
+  color: #00e5ff;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.db-table tbody tr {
+  transition: background 0.15s;
+}
+.db-table tbody tr:hover {
+  background: rgba(0, 229, 255, 0.03);
+}
+
+/* Court Modal (개명) & Forms */
+.modal-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px;
+  z-index: 110;
+  display: none;
+  padding: 24px;
+  animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.modal-panel h3 {
+  color: #ffb030;
+  margin-bottom: 8px;
+}
+.modal-panel p {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.modal-panel .input-group {
+  margin-bottom: 14px;
+}
+.modal-panel input {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 9px 12px;
+  color: #fff;
+  font-size: 12px;
+  outline: none;
+}
+.modal-panel input:focus {
+  border-color: #ffb030;
+}
+
+/* floating Dashboard Trigger Button (HUD) */
+#dashboard-toggle-btn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  padding: 8px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #00e5ff;
+  border-color: rgba(0, 229, 255, 0.25);
+  cursor: pointer;
+  transition: all 0.2s;
+  pointer-events: auto;
+}
+#dashboard-toggle-btn:hover {
+  background: rgba(0, 229, 255, 0.08);
+  border-color: #00e5ff;
+  box-shadow: 0 0 10px rgba(0, 229, 255, 0.15);
+}
+
+/* Policies */
+.policy-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.policy-item:last-child {
+  border-bottom: none;
+}
+.policy-item div {
+  max-width: 75%;
+}
+.policy-item strong {
+  font-size: 12px;
+  color: #fff;
+}
+.policy-item p {
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+  margin-top: 4px;
+}
+.select-btn {
+  font-size: 10px;
+  padding: 6px 12px;
+  border-color: rgba(0, 229, 255, 0.25);
+  color: #00e5ff;
+}
+.select-btn.active {
+  background: #00e5ff;
+  color: #050a18;
+  border-color: #00e5ff;
+  font-weight: 700;
+}
+
+/* Stock trading column buttons */
+.trade-btn {
+  padding: 4px 8px;
+  font-size: 9px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-weight: 700;
+  transition: all 0.15s;
+}
+.trade-btn.buy {
+  background: rgba(0, 230, 118, 0.08);
+  border-color: rgba(0, 230, 118, 0.25);
+  color: #00e676;
+}
+.trade-btn.buy:hover {
+  background: #00e676;
+  color: #050a18;
+}
+.trade-btn.sell {
+  background: rgba(255, 69, 96, 0.08);
+  border-color: rgba(255, 69, 96, 0.25);
+  color: #ff4560;
+}
+.trade-btn.sell:hover {
+  background: #ff4560;
+  color: #050a18;
+}
+.sparkline {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* Real Estate Grid cards */
+.re-card {
+  background: rgba(5, 12, 28, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 14px;
+}
+.re-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 8px;
+}
+.re-specs {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.6;
+}
+.re-price {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffb030;
+  margin-top: 10px;
+}
+
+/* Event Logs list */
+.event-logs {
+  max-height: 380px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.log-item {
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid #ffb030;
+  padding: 10px 14px;
+  border-radius: 0 6px 6px 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.log-item.empty {
+  border-left-color: rgba(255,255,255,0.1);
+  text-align: center;
+  color: rgba(255,255,255,0.3);
+  padding: 24px;
+}
+.log-title {
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 2px;
+}
+.log-desc {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* Scrollbar customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #00e5ff;
+}
+
+/* 3D Citizen Hover Tooltip */
+#citizen-tooltip {
+  min-width: 190px;
+  max-width: 260px;
+  line-height: 1.6;
+  box-shadow: 0 4px 24px rgba(0, 229, 255, 0.2);
+  border-color: rgba(0, 229, 255, 0.35);
+  transition: opacity 0.1s ease;
+}
+.tooltip-title {
+  font-weight: 700;
+  color: #00e5ff;
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+}
+.tooltip-job {
+  color: #ffb030;
+  font-weight: 600;
+  font-size: 11px;
+}
+.tooltip-stats {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.65);
+}
+.tooltip-stats span {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #fff;
+}
+

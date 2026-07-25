@@ -85,8 +85,280 @@
     </div>
   </div>
 
+  <!-- 🏛️ PRESIDENTIAL DASHBOARD (Glassmorphism UI) -->
+  <div id="dashboard" class="glass-panel">
+    <div class="db-header">
+      <div class="db-title-group">
+        <span class="db-icon">🏛️</span>
+        <div>
+          <h2>네오이현 대통령 집무실</h2>
+          <p class="db-subtitle">Neo-LeeHyeon Presidential Office</p>
+        </div>
+      </div>
+      <button class="close-db-btn" onclick="toggleDashboard(false)">&times;</button>
+    </div>
+
+    <div class="db-tabs">
+      <button class="db-tab-btn active" onclick="switchTab('overview')">📊 국가 지표</button>
+      <button class="db-tab-btn" onclick="switchTab('budget')">💸 예산 & 세율</button>
+      <button class="db-tab-btn" onclick="switchTab('citizens')">👥 국민 관리</button>
+      <button class="db-tab-btn" onclick="switchTab('stocks')">📈 주식 시장</button>
+      <button class="db-tab-btn" onclick="switchTab('realestate')">🏠 부동산</button>
+      <button class="db-tab-btn" onclick="switchTab('laws')">📜 법률 & 이벤트</button>
+    </div>
+
+    <div class="db-body">
+      <!-- 1. OVERVIEW TAB -->
+      <div id="tab-overview" class="db-tab-content active">
+        <div class="db-grid-4">
+          <div class="db-card">
+            <span class="card-icon">💰</span>
+            <div class="card-label">국가 GDP</div>
+            <div class="card-val" id="db-gdp">₦0</div>
+          </div>
+          <div class="db-card">
+            <span class="card-icon">🏦</span>
+            <div class="card-label">국고 잔고</div>
+            <div class="card-val text-green" id="db-treasury">₦0</div>
+          </div>
+          <div class="db-card">
+            <span class="card-icon">🎈</span>
+            <div class="card-label">물가상승률 (인플레)</div>
+            <div class="card-val text-orange" id="db-inflation">0%</div>
+          </div>
+          <div class="db-card">
+            <span class="card-icon">📉</span>
+            <div class="card-label">실업률</div>
+            <div class="card-val text-red" id="db-unemployment">0%</div>
+          </div>
+        </div>
+
+        <div class="db-grid-3 mt-16">
+          <div class="db-card stat-card">
+            <h4>👥 국민 평균 행복도</h4>
+            <div class="progress-bar-container">
+              <div class="progress-bar-fill bg-cyan" id="bar-happy" style="width: 50%"></div>
+            </div>
+            <div class="progress-val" id="val-happy">0%</div>
+          </div>
+          <div class="db-card stat-card">
+            <h4>❤️ 국민 평균 건강도</h4>
+            <div class="progress-bar-container">
+              <div class="progress-bar-fill bg-green" id="bar-health" style="width: 50%"></div>
+            </div>
+            <div class="progress-val" id="val-health">0%</div>
+          </div>
+          <div class="db-card stat-card">
+            <h4>🚨 사회 범죄율 / 오염도</h4>
+            <div class="stat-row">
+              <span>범죄율:</span>
+              <strong id="val-crime">0%</strong>
+            </div>
+            <div class="stat-row">
+              <span>환경 오염도:</span>
+              <strong id="val-pollution">0%</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="db-grid-2 mt-16">
+          <div class="db-card">
+            <h4>🏛️ 국가 행정 핵심 정보</h4>
+            <div class="info-row"><span>수도</span><span>세종 디스트릭트</span></div>
+            <div class="info-row"><span>국가 통화</span><span>네오 (₦)</span></div>
+            <div class="info-row"><span>공식 언어</span><span>한국어 / 파이썬</span></div>
+            <div class="info-row"><span>기준 금리</span><span id="info-interest">0%</span></div>
+          </div>
+          <div class="db-card">
+            <h4>🚀 과학 기술 & 우주개발</h4>
+            <div class="info-row"><span>기술 혁신 지수</span><span id="info-tech">0</span></div>
+            <div class="info-row"><span>우주 진척도</span><span id="info-space">0%</span></div>
+            <div class="info-row"><span>식량 자급률</span><span id="info-food">0%</span></div>
+            <div class="info-row"><span>스마트 전력망</span><span id="info-power">0%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. BUDGET TAB -->
+      <div id="tab-budget" class="db-tab-content">
+        <div class="db-grid-2">
+          <!-- Tax Sliders -->
+          <div class="db-card">
+            <h3>💸 국가 세율 설정</h3>
+            <div class="slider-group">
+              <div class="slider-header">
+                <label>소득세율</label>
+                <span id="lbl-tax-income">15%</span>
+              </div>
+              <input type="range" id="sld-tax-income" min="5" max="50" value="15" oninput="updateTaxRates()">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <label>법인세율</label>
+                <span id="lbl-tax-corporate">10%</span>
+              </div>
+              <input type="range" id="sld-tax-corporate" min="5" max="40" value="10" oninput="updateTaxRates()">
+            </div>
+            <div class="slider-group">
+              <div class="slider-header">
+                <label>토지보유세율</label>
+                <span id="lbl-tax-property">1%</span>
+              </div>
+              <input type="range" id="sld-tax-property" min="0" max="10" step="0.5" value="1" oninput="updateTaxRates()">
+            </div>
+            <div class="alert alert-info">
+              💡 세율을 올리면 재정이 튼튼해지지만, 국민들의 소비 여력이 낮아지고 기업 투자가 저하됩니다.
+            </div>
+          </div>
+
+          <!-- Budget Allocations -->
+          <div class="db-card scroll-card" style="max-height: 400px;">
+            <h3>📊 부처별 예산 배분비 (%)</h3>
+            <div id="budget-sliders-container">
+              <!-- Sliders injected by JS -->
+            </div>
+            <div class="total-allocation-bar">
+              <span>배분 합계: </span><strong id="budget-allocation-sum">100%</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. CITIZENS TAB -->
+      <div id="tab-citizens" class="db-tab-content">
+        <div class="filter-bar">
+          <input type="text" id="citizen-search" placeholder="국민 이름 검색..." oninput="renderCitizenList()">
+          <span class="citizen-count-label">총 국민 수: 1,000명</span>
+        </div>
+        <div class="table-wrapper">
+          <table class="db-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>이름</th>
+                <th>나이</th>
+                <th>성별</th>
+                <th>학력</th>
+                <th>직업</th>
+                <th>월급</th>
+                <th>잔고</th>
+                <th>행복도</th>
+                <th>건강도</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="citizen-table-body">
+              <!-- JS Injected Rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 4. STOCKS TAB -->
+      <div id="tab-stocks" class="db-tab-content">
+        <div class="db-grid-2 mb-12">
+          <div class="db-card mini-card">
+            <span>대통령 개인 자산</span>
+            <strong id="player-cash">₦500,000</strong>
+          </div>
+          <div class="db-card mini-card">
+            <span>국고 잔고</span>
+            <strong id="treasury-cash">₦5,000,000,000</strong>
+          </div>
+        </div>
+        <div class="table-wrapper">
+          <table class="db-table">
+            <thead>
+              <tr>
+                <th>코드</th>
+                <th>종목명</th>
+                <th>유형</th>
+                <th>현재가</th>
+                <th>변동</th>
+                <th>거래</th>
+              </tr>
+            </thead>
+            <tbody id="stock-table-body">
+              <!-- JS Injected Rows -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 5. REAL ESTATE TAB -->
+      <div id="tab-realestate" class="db-tab-content">
+        <div class="db-grid-3" id="realestate-container">
+          <!-- JS Injected Cards -->
+        </div>
+      </div>
+
+      <!-- 6. LAWS TAB -->
+      <div id="tab-laws" class="db-tab-content">
+        <div class="db-grid-2">
+          <div class="db-card">
+            <h3>📜 행정 특별 법령 시행</h3>
+            <div class="policy-item">
+              <div>
+                <strong>기본소득제 도입 (₦50,000 / 월)</strong>
+                <p>국민 모두에게 월 ₦5만 보조금 지급. 행복도 증가, 재정 지출 대폭 상승.</p>
+              </div>
+              <button class="form-btn select-btn" id="btn-policy-basic" onclick="togglePolicy('basic')">도입하기</button>
+            </div>
+            <div class="policy-item">
+              <div>
+                <strong>주 52시간 근로 상한제</strong>
+                <p>근무 시간을 제한합니다. 스트레스 해소, 기업 성장율 다소 하락.</p>
+              </div>
+              <button class="form-btn select-btn" id="btn-policy-hours" onclick="togglePolicy('hours')">도입하기</button>
+            </div>
+            <div class="policy-item">
+              <div>
+                <strong>글로벌 우수 이민 수용법</strong>
+                <p>외국 우수 인재 이민 절차 간소화. 기술 성장률 가속화, 범죄율 소폭 변동.</p>
+              </div>
+              <button class="form-btn select-btn" id="btn-policy-immig" onclick="togglePolicy('immig')">도입하기</button>
+            </div>
+          </div>
+          <div class="db-card">
+            <h3>🚨 실시간 사건 사고 & 이벤트 로그</h3>
+            <div id="event-logs-container" class="event-logs">
+              <div class="log-item empty">아직 보고된 긴급 대시보드 리포트가 없습니다.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Court Name-Change Dialog (법원 개명 절차) -->
+  <div id="court-dialog" class="glass-panel modal-panel">
+    <h3>⚖️ 네오이현 사법 재판소</h3>
+    <p>국민의 법적 개명 요청 서류입니다. (개명 심리 수수료: <strong>₦50,000</strong>)</p>
+    <div class="input-group">
+      <label>기존 성명</label>
+      <input type="text" id="court-old-name" readonly>
+    </div>
+    <div class="input-group">
+      <label>새로운 성명</label>
+      <input type="text" id="court-new-name" placeholder="새로운 성명을 입력해 주세요...">
+    </div>
+    <div class="btn-group">
+      <button class="form-btn login-btn" onclick="submitNameChange()">승인 및 개명 판결</button>
+      <button class="form-btn register-btn" onclick="closeCourt()">서류 반려</button>
+    </div>
+  </div>
+
+  <!-- HUD floating Dashboard Toggle button -->
+  <button id="dashboard-toggle-btn" class="glass-panel" onclick="toggleDashboard(true)">🏛️ 대통령 집무실 (Tab)</button>
+
+  <!-- 3D Citizen Hover Tooltip -->
+  <div id="citizen-tooltip" class="glass-panel" style="display: none; position: fixed; pointer-events: none; padding: 12px; font-size: 11px; z-index: 200;">
+    <!-- Filled dynamically by JavaScript -->
+  </div>
+
   <!-- Three.js CDN -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="game.js?v=5"></script>
+  <script src="simulation.js"></script>
+  <script src="game.js?v=6"></script>
 </body>
 </html>

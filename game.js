@@ -12,7 +12,7 @@ const mctx = mm.getContext('2d');
 let scene, camera, renderer;
 let ambientLight, dirLight, hemiLight;
 let cameraYaw = -Math.PI / 2;
-let cameraPitch = 0.2;
+let cameraPitch = 0.15;
 const bldMaterials = {};
 const geomCache = {};
 
@@ -152,6 +152,9 @@ const P = {
   angle: -Math.PI / 2,
   health: 100, happy: 75, hunger: 80, energy: 100,
   money: 500000,
+  portfolio: {
+    NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0
+  }
 };
 
 // ── GAME TIME ──
@@ -159,6 +162,7 @@ let gMin    = 480;  // starts at 08:00
 let dayN    = 1;
 let dlgOpen = false;
 let locked  = false;
+let simInterval = null;
 
 // ── UTILITY ──
 function cap(v, lo = 0, hi = 100) { return Math.max(lo, Math.min(hi, v)); }
@@ -172,7 +176,7 @@ let currentUsername = "";
 let currentPassword = "";
 let isCloudConnected = false;
 let autoSaveInterval = null;
-let isThirdPerson = true;
+let viewMode = 'third';
 let rainIntensity = 0.0;
 
 async function fetchUser(username) {
@@ -212,7 +216,16 @@ async function saveUser(username, password) {
     energy: P.energy,
     money: P.money,
     gMin: gMin,
-    dayN: dayN
+    dayN: dayN,
+    portfolio: P.portfolio,
+    simState: {
+      treasury: Sim.treasury,
+      gdp: Sim.gdp,
+      taxRateIncome: Sim.taxRateIncome,
+      taxRateCorporate: Sim.taxRateCorporate,
+      taxRateProperty: Sim.taxRateProperty,
+      budgetAllocation: Sim.budgetAllocation
+    }
   };
 
   try {
@@ -309,6 +322,17 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     P.money = userData.money !== undefined ? userData.money : 500000;
     gMin = userData.gMin !== undefined ? userData.gMin : 480;
     dayN = userData.dayN !== undefined ? userData.dayN : 1;
+    P.portfolio = userData.portfolio || { NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0 };
+
+    Sim.init();
+    if (userData.simState) {
+      Sim.treasury = userData.simState.treasury || Sim.treasury;
+      Sim.gdp = userData.simState.gdp || Sim.gdp;
+      Sim.taxRateIncome = userData.simState.taxRateIncome || Sim.taxRateIncome;
+      Sim.taxRateCorporate = userData.simState.taxRateCorporate || Sim.taxRateCorporate;
+      Sim.taxRateProperty = userData.simState.taxRateProperty || Sim.taxRateProperty;
+      Sim.budgetAllocation = userData.simState.budgetAllocation || Sim.budgetAllocation;
+    }
 
     cameraYaw = P.angle;
 
@@ -330,6 +354,12 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     document.getElementById('lock-screen').style.display = 'none';
     c.requestPointerLock();
     
+    if (simInterval) clearInterval(simInterval);
+    simInterval = setInterval(() => {
+      Sim.tick();
+      updateDashboardData();
+    }, 10000);
+
     // Start auto-save loop (every 15 seconds)
     if (autoSaveInterval) clearInterval(autoSaveInterval);
     autoSaveInterval = setInterval(() => {
@@ -398,8 +428,11 @@ document.getElementById('registerBtn').addEventListener('click', async () => {
   P.hunger = 80;
   P.energy = 100;
   P.money = 500000;
+  P.portfolio = { NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0 };
   gMin = 480;
   dayN = 1;
+
+  Sim.init();
 
   cameraYaw = P.angle;
 
@@ -416,6 +449,12 @@ document.getElementById('registerBtn').addEventListener('click', async () => {
   document.getElementById('lock-screen').style.display = 'none';
   c.requestPointerLock();
   
+  if (simInterval) clearInterval(simInterval);
+  simInterval = setInterval(() => {
+    Sim.tick();
+    updateDashboardData();
+  }, 10000);
+
   // Start auto-save loop
   if (autoSaveInterval) clearInterval(autoSaveInterval);
   autoSaveInterval = setInterval(() => {
@@ -444,18 +483,13 @@ c.addEventListener('mousedown', e => {
 window.addEventListener('mousemove', e => {
   if (locked && !dlgOpen) {
     cameraYaw -= e.movementX * 0.0025;
-    cameraPitch -= e.movementY * 0.0025;
-    cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
     P.angle = cameraYaw;
   } else if (isDragging && !dlgOpen) {
     const deltaX = e.clientX - prevMouseX;
-    const deltaY = e.clientY - prevMouseY;
     prevMouseX = e.clientX;
     prevMouseY = e.clientY;
 
     cameraYaw -= deltaX * 0.005;
-    cameraPitch -= deltaY * 0.005;
-    cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
     P.angle = cameraYaw;
   }
 });
@@ -477,13 +511,10 @@ c.addEventListener('touchstart', e => {
 c.addEventListener('touchmove', e => {
   if (isDragging && !dlgOpen && e.touches.length === 1) {
     const deltaX = e.touches[0].clientX - prevMouseX;
-    const deltaY = e.touches[0].clientY - prevMouseY;
     prevMouseX = e.touches[0].clientX;
     prevMouseY = e.touches[0].clientY;
 
     cameraYaw -= deltaX * 0.006;
-    cameraPitch -= deltaY * 0.006;
-    cameraPitch = Math.max(-0.6, Math.min(0.8, cameraPitch));
     P.angle = cameraYaw;
   }
 }, { passive: true });
@@ -496,15 +527,29 @@ addEventListener('keydown', e => {
   if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
   K[e.key] = true;
   if (e.key === 'Escape' && dlgOpen) closeDialog();
+  else if (e.key === 'Escape' && isDashboardOpen) toggleDashboard(false);
   else if (e.key === 'Escape' && locked) document.exitPointerLock();
   if (e.key === 'e' || e.key === 'E') interact();
   
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    toggleDashboard(!isDashboardOpen);
+  }
+  
   if (e.key === 'r' || e.key === 'R') {
-    isThirdPerson = !isThirdPerson;
-    showNotice(isThirdPerson ? "🎥 3인칭 시점으로 변경되었습니다." : "👁️ 1인칭 시점으로 변경되었습니다.");
+    if (viewMode === 'first') {
+      viewMode = 'third';
+      showNotice("🎥 3인칭 시점으로 변경되었습니다.");
+    } else if (viewMode === 'third') {
+      viewMode = 'bird';
+      showNotice("🛸 대통령 조감도 모드로 변경되었습니다. (WASD로 탐색 가능)");
+    } else {
+      viewMode = 'first';
+      showNotice("👁️ 1인칭 시점으로 변경되었습니다.");
+    }
     const crosshair = document.getElementById('crosshair');
     if (crosshair) {
-      crosshair.style.display = isThirdPerson ? 'none' : 'block';
+      crosshair.style.display = viewMode === 'first' ? 'block' : 'none';
     }
   }
 
@@ -813,6 +858,11 @@ function init3DCity() {
 let playerGroup;
 let leftLegGroup, rightLegGroup, leftArmGroup, rightArmGroup;
 let torso, head, visorMat;
+
+let citizenMeshes = [];
+let tsGlobal = 0;
+let mouseScreenX = 0;
+let mouseScreenY = 0;
 let walkTime = 0;
 
 function initPlayer3D() {
@@ -1069,6 +1119,9 @@ function init3D() {
 
   // Create rain particle effects
   createRain();
+
+  // Create 3D wandering citizens
+  init3DCitizens();
 }
 
 // ── WINDOW RESIZING ──
@@ -1187,28 +1240,30 @@ function render(ts) {
     }
   }
 
-  // ── Camera position tracking (1st / 3rd Person Toggle) ──
+  // ── Camera position tracking (1st / 3rd Person / Bird View Toggle) ──
   if (camera) {
-    if (isThirdPerson) {
+    if (viewMode === 'third') {
       if (playerGroup) playerGroup.visible = true;
       const camDist = 4.2;
       let camX = P.x - Math.sin(cameraYaw) * Math.cos(cameraPitch) * camDist;
       let camY = 0.8 + Math.sin(cameraPitch) * camDist;
       let camZ = P.y - Math.cos(cameraYaw) * Math.cos(cameraPitch) * camDist;
       
-      // Prevent camera from going underground (minimum height 0.18)
       camY = Math.max(0.18, camY);
       
       camera.position.set(camX, camY, camZ);
       camera.lookAt(new THREE.Vector3(P.x, 0.75, P.y));
-    } else {
+    } else if (viewMode === 'first') {
       if (playerGroup) playerGroup.visible = false;
-      // Head level height is 1.25 units
       camera.position.set(P.x, 1.25, P.y);
       const targetX = P.x + Math.sin(cameraYaw) * Math.cos(cameraPitch);
       const targetY = 1.25 + Math.sin(cameraPitch);
       const targetZ = P.y + Math.cos(cameraYaw) * Math.cos(cameraPitch);
       camera.lookAt(new THREE.Vector3(targetX, targetY, targetZ));
+    } else if (viewMode === 'bird') {
+      if (playerGroup) playerGroup.visible = true;
+      camera.position.set(P.x, 24, P.y + 12);
+      camera.lookAt(new THREE.Vector3(P.x, 0, P.y));
     }
   }
 
@@ -1343,6 +1398,12 @@ function render(ts) {
 
   updateHUD();
 
+  // Update wandering citizens in 3D
+  update3DCitizens(dt);
+
+  // Raycast for Citizen Hover Tooltip
+  updateCitizenTooltip();
+
   // WebGL Render pass
   renderer.render(scene, camera);
   requestAnimationFrame(render);
@@ -1350,4 +1411,562 @@ function render(ts) {
 
 // ── START ──
 requestAnimationFrame(render);
-showNotice('🏙️ 네오폴리스 수도에 오신 것을 환영합니다! (3D)');
+showNotice('🏙️ 네오이현 수도에 오신 것을 환영합니다! (Tab 키를 누르면 집무실이 열립니다)');
+
+// ── 🏛️ DASHBOARD CONTROLLERS ──
+let isDashboardOpen = false;
+let currentTab = 'overview';
+let activePolicies = { basic: false, hours: false, immig: false };
+let courtCitizenId = null;
+
+function toggleDashboard(show) {
+  isDashboardOpen = show;
+  const db = document.getElementById('dashboard');
+  if (!db) return;
+  db.style.display = show ? 'flex' : 'none';
+  
+  if (show) {
+    document.exitPointerLock();
+    updateDashboardData();
+  } else {
+    c.requestPointerLock();
+  }
+}
+
+function switchTab(tabId) {
+  currentTab = tabId;
+  document.querySelectorAll('.db-tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  document.querySelectorAll('.db-tab-content').forEach(content => {
+    content.classList.remove('active');
+  });
+  
+  const buttons = document.querySelectorAll('.db-tab-btn');
+  buttons.forEach(btn => {
+    if (btn.getAttribute('onclick').includes(tabId)) {
+      btn.classList.add('active');
+    }
+  });
+  
+  const targetContent = document.getElementById(`tab-${tabId}`);
+  if (targetContent) {
+    targetContent.classList.add('active');
+  }
+  
+  updateDashboardData();
+}
+
+function updateTaxRates() {
+  const inc = parseFloat(document.getElementById('sld-tax-income').value);
+  const corp = parseFloat(document.getElementById('sld-tax-corporate').value);
+  const prop = parseFloat(document.getElementById('sld-tax-property').value);
+  
+  Sim.taxRateIncome = inc;
+  Sim.taxRateCorporate = corp;
+  Sim.taxRateProperty = prop;
+  
+  document.getElementById('lbl-tax-income').textContent = `${inc}%`;
+  document.getElementById('lbl-tax-corporate').textContent = `${corp}%`;
+  document.getElementById('lbl-tax-property').textContent = `${prop}%`;
+}
+
+function renderBudgetSliders() {
+  const container = document.getElementById('budget-sliders-container');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  const translations = {
+    welfare: '사회 복지',
+    education: '공공 교육',
+    health: '국민 의료',
+    military: '방위/군사',
+    police: '치안/경찰',
+    fire: '재난/소방',
+    environment: '환경 보호',
+    energy: '에너지/발전',
+    agriculture: '수직 농업',
+    space: '우주 개발',
+    research: 'R&D 연구',
+    transport: '대중 교통',
+    urbanDev: '도시 개발',
+    diplomacy: '대외 외교',
+    industry: '산업 지원'
+  };
+  
+  let totalAlloc = 0;
+  Object.keys(Sim.budgetAllocation).forEach(key => {
+    totalAlloc += Sim.budgetAllocation[key];
+    const row = document.createElement('div');
+    row.className = 'slider-group';
+    row.innerHTML = `
+      <div class="slider-header">
+        <label>${translations[key] || key}</label>
+        <span id="lbl-budget-${key}">${Sim.budgetAllocation[key]}%</span>
+      </div>
+      <input type="range" id="sld-budget-${key}" min="0" max="40" value="${Sim.budgetAllocation[key]}" oninput="onBudgetChange('${key}')">
+    `;
+    container.appendChild(row);
+  });
+  
+  document.getElementById('budget-allocation-sum').textContent = `${totalAlloc}%`;
+  if (totalAlloc !== 100) {
+    document.getElementById('budget-allocation-sum').className = 'text-red';
+  } else {
+    document.getElementById('budget-allocation-sum').className = 'text-green';
+  }
+}
+
+function onBudgetChange(changedKey) {
+  const slider = document.getElementById(`sld-budget-${changedKey}`);
+  const newVal = parseInt(slider.value);
+  
+  let otherSum = 0;
+  Object.keys(Sim.budgetAllocation).forEach(k => {
+    if (k !== changedKey) otherSum += Sim.budgetAllocation[k];
+  });
+  
+  if (newVal + otherSum > 100) {
+    const clampedVal = 100 - otherSum;
+    slider.value = clampedVal;
+    Sim.budgetAllocation[changedKey] = clampedVal;
+  } else {
+    Sim.budgetAllocation[changedKey] = newVal;
+  }
+  
+  document.getElementById(`lbl-budget-${changedKey}`).textContent = `${Sim.budgetAllocation[changedKey]}%`;
+  
+  let sum = 0;
+  Object.keys(Sim.budgetAllocation).forEach(k => {
+    sum += Sim.budgetAllocation[k];
+  });
+  
+  document.getElementById('budget-allocation-sum').textContent = `${sum}%`;
+  if (sum !== 100) {
+    document.getElementById('budget-allocation-sum').className = 'text-red';
+  } else {
+    document.getElementById('budget-allocation-sum').className = 'text-green';
+  }
+}
+
+function renderCitizenList() {
+  const tbody = document.getElementById('citizen-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  
+  const searchVal = document.getElementById('citizen-search').value.toLowerCase();
+  
+  let matches = Sim.citizens.filter(c => c.name.toLowerCase().includes(searchVal));
+  const limit = 100;
+  const slice = matches.slice(0, limit);
+  
+  slice.forEach(c => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${c.id}</td>
+      <td><strong>${c.name}</strong></td>
+      <td>${c.age}세</td>
+      <td>${c.gender}</td>
+      <td>${c.education}</td>
+      <td>${c.job || '<span class="text-orange">실업자</span>'}</td>
+      <td>₦${(c.salary || 0).toLocaleString()}</td>
+      <td>₦${c.bankBalance.toLocaleString()}</td>
+      <td>${c.happiness}%</td>
+      <td>${c.health}%</td>
+      <td><button class="trade-btn buy" onclick="openCourt(${c.id})">개명</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function openCourt(id) {
+  courtCitizenId = id;
+  const c = Sim.citizens.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('court-old-name').value = c.name;
+  document.getElementById('court-new-name').value = '';
+  document.getElementById('court-dialog').style.display = 'block';
+}
+
+function closeCourt() {
+  document.getElementById('court-dialog').style.display = 'none';
+}
+
+function submitNameChange() {
+  const newName = document.getElementById('court-new-name').value.trim();
+  if (!newName) {
+    showNotice('새로운 성명을 입력해 주세요.');
+    return;
+  }
+  
+  if (P.money < 50000) {
+    showNotice('개명 심리 수수료(₦50,000)가 부족합니다.');
+    return;
+  }
+  
+  const target = Sim.citizens.find(x => x.id === courtCitizenId);
+  if (target) {
+    const oldName = target.name;
+    target.name = newName;
+    P.money -= 50000;
+    
+    addEventLog('⚖️ 법원 개명 허가 판결', `국민 '${oldName}'이(가) 법원 판결을 통해 '${newName}'(으)로 개명하였습니다.`);
+    
+    showNotice(`개명 신청이 승인되었습니다! (${oldName} ➔ ${newName})`);
+    closeCourt();
+    renderCitizenList();
+    updateDashboardData();
+  }
+}
+
+function renderStockMarket() {
+  const tbody = document.getElementById('stock-table-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  
+  Sim.stocks.forEach(s => {
+    const diff = s.price - s.prevPrice;
+    const diffPct = ((diff / s.prevPrice) * 100).toFixed(1);
+    const sign = diff >= 0 ? '+' : '';
+    const diffClass = diff >= 0 ? 'text-green' : 'text-red';
+    
+    const owned = P.portfolio[s.code] || 0;
+    
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><strong>${s.code}</strong></td>
+      <td>${s.name}</td>
+      <td>${s.type}</td>
+      <td>₦${s.price.toLocaleString()}</td>
+      <td class="${diffClass} sparkline">${sign}${diffPct}%</td>
+      <td>
+        <div style="display:flex;gap:4px">
+          <button class="trade-btn buy" onclick="tradeStock('${s.code}', 'buy')">매수 (10)</button>
+          <button class="trade-btn sell" onclick="tradeStock('${s.code}', 'sell')">매도 (10)</button>
+          <span style="font-size:10px;margin-left:6px;align-self:center">보유: ${owned}주</span>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function tradeStock(code, action) {
+  const s = Sim.stocks.find(x => x.code === code);
+  if (!s) return;
+  
+  const lot = 10;
+  const cost = s.price * lot;
+  
+  if (action === 'buy') {
+    if (P.money < cost) {
+      showNotice('개인 잔고가 부족합니다!');
+      return;
+    }
+    P.money -= cost;
+    P.portfolio[code] = (P.portfolio[code] || 0) + lot;
+    showNotice(`${s.name} ${lot}주를 ₦${cost.toLocaleString()}에 매수하였습니다.`);
+  } else {
+    const owned = P.portfolio[code] || 0;
+    if (owned < lot) {
+      showNotice('매도할 주식이 부족합니다!');
+      return;
+    }
+    P.money += cost;
+    P.portfolio[code] = owned - lot;
+    showNotice(`${s.name} ${lot}주를 ₦${cost.toLocaleString()}에 매도하였습니다.`);
+  }
+  
+  renderStockMarket();
+  updateDashboardData();
+}
+
+function renderRealEstate() {
+  const container = document.getElementById('realestate-container');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  Sim.houses.forEach(h => {
+    const card = document.createElement('div');
+    card.className = 'db-card re-card';
+    card.innerHTML = `
+      <div class="re-title">🏠 ${h.name}</div>
+      <div class="re-specs">
+        면적: ${h.size}㎡<br>
+        방 ${h.rooms}개 / 욕실 ${h.baths}개<br>
+        수도/광랜: ${h.net}<br>
+        관리비: ₦${h.maintenanceFee.toLocaleString()}/월<br>
+        전기/수도: ${h.elec}kWh / ${h.water}t
+      </div>
+      <div class="re-price">
+        매매: ₦${h.price.toLocaleString()}<br>
+        월세: ₦${h.rent.toLocaleString()}/월
+      </div>
+    `;
+    container.appendChild(card);
+  });
+}
+
+function togglePolicy(key) {
+  activePolicies[key] = !activePolicies[key];
+  const btn = document.getElementById(`btn-policy-${key}`);
+  if (btn) {
+    if (activePolicies[key]) {
+      btn.textContent = '시행 중';
+      btn.classList.add('active');
+      showNotice(`특별 행정 조치 시행: ${btn.parentElement.firstElementChild.innerText}`);
+      
+      if (key === 'basic') {
+        Sim.treasury -= 200000000;
+        Sim.popHappiness += 8;
+      } else if (key === 'hours') {
+        Sim.techLevel -= 5;
+        Sim.popHappiness += 5;
+      } else if (key === 'immig') {
+        Sim.techLevel += 15;
+        Sim.popCrimeRate = Math.min(10, Sim.popCrimeRate + 0.2);
+      }
+    } else {
+      btn.textContent = '도입하기';
+      btn.classList.remove('active');
+    }
+  }
+  updateDashboardData();
+}
+
+window.onSimulationEvent = (evt) => {
+  const items = evt.options.map(opt => ({
+    label: opt.text,
+    fn: (p) => {
+      opt.effect();
+      updateDashboardData();
+      closeDialog();
+      addEventLog(`🚨 긴급 결정: ${evt.title}`, `선택된 조치: ${opt.text}`);
+      return `[이벤트] ${evt.title} - 선택한 조치가 실행되었습니다.`;
+    }
+  }));
+  openDialog(`🚨 긴급 특별 리포트: ${evt.title}`, evt.desc, items);
+};
+
+function addEventLog(title, desc) {
+  const container = document.getElementById('event-logs-container');
+  if (!container) return;
+  
+  const empty = container.querySelector('.empty');
+  if (empty) empty.remove();
+  
+  const item = document.createElement('div');
+  item.className = 'log-item';
+  item.innerHTML = `
+    <div class="log-title">${title}</div>
+    <div class="log-desc">${desc}</div>
+  `;
+  container.insertBefore(item, container.firstChild);
+}
+
+function updateDashboardData() {
+  if (!isDashboardOpen) return;
+  
+  if (!Sim.citizens || Sim.citizens.length === 0) {
+    Sim.init();
+  }
+  
+  if (!simInterval) {
+    simInterval = setInterval(() => {
+      Sim.tick();
+      updateDashboardData();
+    }, 10000);
+  }
+  
+  document.getElementById('db-gdp').textContent = `₦${Sim.gdp.toLocaleString()}`;
+  document.getElementById('db-treasury').textContent = `₦${Sim.treasury.toLocaleString()}`;
+  document.getElementById('db-inflation').textContent = `${Sim.inflation}%`;
+  document.getElementById('db-unemployment').textContent = `${Sim.unemploymentRate}%`;
+  
+  document.getElementById('bar-happy').style.width = `${Sim.popHappiness}%`;
+  document.getElementById('val-happy').textContent = `${Math.round(Sim.popHappiness)}%`;
+  
+  document.getElementById('bar-health').style.width = `${Sim.popHealth}%`;
+  document.getElementById('val-health').textContent = `${Math.round(Sim.popHealth)}%`;
+  
+  document.getElementById('val-crime').textContent = `${Sim.popCrimeRate}%`;
+  document.getElementById('val-pollution').textContent = `${Sim.pollution}%`;
+  
+  document.getElementById('info-interest').textContent = `${Sim.interestRate}%`;
+  document.getElementById('info-tech').textContent = Math.round(Sim.techLevel);
+  document.getElementById('info-space').textContent = `${Math.round(Sim.spaceProgress)}%`;
+  document.getElementById('info-food').textContent = `${Math.round(Sim.foodSelfRatio)}%`;
+  document.getElementById('info-power').textContent = `${Math.round(Sim.energyGridRatio)}%`;
+  
+  document.getElementById('player-cash').textContent = `₦${P.money.toLocaleString()}`;
+  document.getElementById('treasury-cash').textContent = `₦${Sim.treasury.toLocaleString()}`;
+
+  if (currentTab === 'budget') {
+    renderBudgetSliders();
+  } else if (currentTab === 'citizens') {
+    renderCitizenList();
+  } else if (currentTab === 'stocks') {
+    renderStockMarket();
+  } else if (currentTab === 'realestate') {
+    renderRealEstate();
+  }
+}
+
+// ── 👤 3D CITIZENS NAVIGATION & RENDER logic ──
+
+function init3DCitizens() {
+  citizenMeshes.forEach(cm => scene.remove(cm.mesh));
+  citizenMeshes = [];
+
+  const citizenGeom = new THREE.CylinderGeometry(0.06, 0.06, 0.35, 8);
+  
+  const roadTiles = [];
+  for (let y = 3; y < MH - 3; y++) {
+    for (let x = 3; x < MW - 3; x++) {
+      if (MAP[y][x] === 0) {
+        roadTiles.push({x, y});
+      }
+    }
+  }
+
+  if (roadTiles.length === 0) return;
+
+  const numSpawn = Math.min(50, Sim.citizens.length);
+  for (let i = 0; i < numSpawn; i++) {
+    const citizen = Sim.citizens[i];
+    const spawnTile = roadTiles[Math.floor(Math.random() * roadTiles.length)];
+    
+    const randomColor = new THREE.Color().setHSL(Math.random(), 0.9, 0.6);
+    const citizenMat = new THREE.MeshStandardMaterial({
+      color: randomColor,
+      emissive: randomColor,
+      emissiveIntensity: 0.9,
+      roughness: 0.4,
+      metalness: 0.3
+    });
+
+    const mesh = new THREE.Mesh(citizenGeom, citizenMat);
+    mesh.position.set(spawnTile.x + 0.5, 0.175, spawnTile.y + 0.5);
+    scene.add(mesh);
+
+    citizenMeshes.push({
+      mesh: mesh,
+      citizenId: citizen.id,
+      tx: spawnTile.x,
+      ty: spawnTile.y,
+      targetX: spawnTile.x,
+      targetY: spawnTile.y,
+      speed: 0.8 + Math.random() * 0.6
+    });
+  }
+}
+
+function update3DCitizens(dt) {
+  tsGlobal += dt * 1000;
+  
+  citizenMeshes.forEach(cm => {
+    const pos = cm.mesh.position;
+    const targetWorldX = cm.targetX + 0.5;
+    const targetWorldZ = cm.targetY + 0.5;
+
+    const dx = targetWorldX - pos.x;
+    const dz = targetWorldZ - pos.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+
+    if (dist < 0.03) {
+      cm.tx = cm.targetX;
+      cm.ty = cm.targetY;
+      
+      const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+      const validDirs = [];
+      
+      dirs.forEach(([ox, oy]) => {
+        const nx = cm.tx + ox;
+        const ny = cm.ty + oy;
+        if (nx >= 0 && nx < MW && ny >= 0 && ny < MH && MAP[ny][nx] === 0) {
+          validDirs.push({x: nx, y: ny});
+        }
+      });
+      
+      if (validDirs.length > 0) {
+        const next = validDirs[Math.floor(Math.random() * validDirs.length)];
+        cm.targetX = next.x;
+        cm.targetY = next.y;
+      }
+    } else {
+      const spd = cm.speed * dt;
+      pos.x += (dx / dist) * spd;
+      pos.z += (dz / dist) * spd;
+    }
+    
+    pos.y = 0.175 + Math.abs(Math.sin(tsGlobal * 0.005 * cm.speed)) * 0.04;
+  });
+}
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+window.addEventListener('mousemove', e => {
+  mouseScreenX = e.clientX;
+  mouseScreenY = e.clientY;
+  
+  if (!locked) {
+    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  }
+});
+
+function updateCitizenTooltip() {
+  if (!camera || citizenMeshes.length === 0) return;
+
+  if (locked) {
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  } else {
+    raycaster.setFromCamera(mouse, camera);
+  }
+
+  const meshesOnly = citizenMeshes.map(cm => cm.mesh);
+  const intersects = raycaster.intersectObjects(meshesOnly);
+  const tooltip = document.getElementById('citizen-tooltip');
+
+  if (intersects.length > 0 && intersects[0].distance < 12) {
+    const hitMesh = intersects[0].object;
+    const cm = citizenMeshes.find(x => x.mesh === hitMesh);
+    const citizen = Sim.citizens.find(c => c.id === cm.citizenId);
+
+    if (citizen && tooltip) {
+      tooltip.style.display = 'block';
+      
+      if (locked) {
+        tooltip.style.left = '50%';
+        tooltip.style.transform = 'translateX(-50%)';
+        tooltip.style.top = 'auto';
+        tooltip.style.bottom = '120px';
+      } else {
+        tooltip.style.transform = 'none';
+        tooltip.style.left = `${mouseScreenX + 16}px`;
+        tooltip.style.top = `${mouseScreenY + 16}px`;
+        tooltip.style.bottom = 'auto';
+      }
+
+      tooltip.innerHTML = `
+        <div class="tooltip-title">
+          <span>👤 ${citizen.name}</span>
+          <span style="color:rgba(255,255,255,0.4)">${citizen.age}세 · ${citizen.gender}</span>
+        </div>
+        <div class="tooltip-job">${citizen.job || '<span class="text-orange">실업자</span>'}</div>
+        <div class="tooltip-stats">
+          행복도: <span>${citizen.happiness}%</span>
+          건강도: <span>${citizen.health}%</span>
+          잔고: <span>₦${citizen.bankBalance.toLocaleString()}</span>
+          스트레스: <span>${citizen.stress}%</span>
+        </div>
+        ${citizen.prisonTime > 0 ? '<div style="color:#ff4560;font-weight:700;font-size:10px;margin-top:4px">⚠️ 교도소 수감 중</div>' : ''}
+      `;
+    }
+  } else {
+    if (tooltip) {
+      tooltip.style.display = 'none';
+    }
+  }
+}
