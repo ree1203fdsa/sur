@@ -2294,3 +2294,588 @@ input[type="range"]::-webkit-slider-thumb:hover {
   box-shadow: 0 0 10px rgba(168,85,247,0.2);
 }
 
+/* 👥 NPC 대화 선택지 버튼 스타일 */
+.npc-option-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #fff;
+  padding: 10px 16px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.npc-option-btn:hover {
+  background: rgba(0, 229, 255, 0.12);
+  border-color: var(--cyan);
+  transform: translateX(4px);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.15);
+}
+
+
+/* ── 재난 배너 슬라이드 애니메이션 ── */
+@keyframes disasterSlideIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-20px) scale(0.92); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0)      scale(1); }
+}
+
+/* ── showNotice 부드러운 전환 ── */
+#notice {
+  transition: opacity 0.4s ease !important;
+}
+
+
+/* ── 관리자 패널 (ree1203 전용) ── */
+#admin-toggle-btn {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  writing-mode: vertical-rl;
+  padding: 14px 8px;
+  background: rgba(255, 69, 96, 0.15);
+  border: 1px solid rgba(255, 69, 96, 0.4);
+  border-right: none;
+  border-radius: 10px 0 0 10px;
+  color: #ff4560;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 500;
+  letter-spacing: 2px;
+  backdrop-filter: blur(8px);
+  transition: background 0.2s, box-shadow 0.2s;
+  user-select: none;
+}
+#admin-toggle-btn:hover {
+  background: rgba(255, 69, 96, 0.3);
+  box-shadow: -4px 0 16px rgba(255, 69, 96, 0.3);
+}
+
+#admin-panel {
+  position: fixed;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  width: 340px;
+  max-height: 85vh;
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  border-color: rgba(255, 69, 96, 0.35);
+  box-shadow: 0 0 40px rgba(255, 69, 96, 0.15), 0 8px 32px rgba(0,0,0,0.6);
+  overflow: hidden;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255, 69, 96, 0.2);
+  flex-shrink: 0;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.2);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+}
+.admin-tab-btn {
+  flex: 1;
+  padding: 6px 4px;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+.admin-tab-btn.active {
+  background: rgba(255, 69, 96, 0.15);
+  border-color: rgba(255, 69, 96, 0.4);
+  color: #ff4560;
+}
+.admin-tab-btn:hover:not(.active) {
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+
+.admin-tab-content {
+  display: none;
+  padding: 14px;
+  overflow-y: auto;
+  flex: 1;
+}
+.admin-tab-content.active { display: block; }
+
+.admin-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.admin-toggle-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+.admin-toggle-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.admin-toggle-icon { font-size: 18px; }
+.admin-toggle-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.admin-toggle-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Toggle switch */
+.admin-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.admin-switch input { opacity: 0; width: 0; height: 0; }
+.admin-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background: rgba(255,255,255,0.1);
+  border-radius: 22px;
+  transition: 0.3s;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.admin-slider::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  transition: 0.3s;
+}
+.admin-switch input:checked + .admin-slider {
+  background: rgba(0, 229, 255, 0.35);
+  border-color: var(--primary);
+  box-shadow: 0 0 8px rgba(0, 229, 255, 0.3);
+}
+.admin-switch input:checked + .admin-slider.red-slider {
+  background: rgba(255, 69, 96, 0.4);
+  border-color: #ff4560;
+  box-shadow: 0 0 8px rgba(255, 69, 96, 0.3);
+}
+.admin-switch input:checked + .admin-slider::before {
+  transform: translateX(18px);
+  background: var(--primary);
+}
+.admin-switch input:checked + .admin-slider.red-slider::before {
+  background: #ff4560;
+}
+
+.admin-status-bar {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding: 6px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 6px;
+  margin-top: 4px;
+}
+
+.admin-input {
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  color: #fff;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+.admin-input:focus {
+  outline: none;
+  border-color: rgba(0, 229, 255, 0.4);
+}
+textarea.admin-input { resize: vertical; min-height: 60px; }
+
+.admin-btn {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+  font-family: inherit;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.admin-btn-cyan {
+  background: rgba(0, 229, 255, 0.1);
+  border-color: rgba(0, 229, 255, 0.35);
+  color: var(--primary);
+}
+.admin-btn-cyan:hover { background: rgba(0, 229, 255, 0.2); }
+.admin-btn-red {
+  background: rgba(255, 69, 96, 0.1);
+  border-color: rgba(255, 69, 96, 0.35);
+  color: #ff4560;
+}
+.admin-btn-red:hover { background: rgba(255, 69, 96, 0.22); }
+
+.admin-player-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 7px;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+.admin-player-card .admin-player-name {
+  font-weight: 600;
+  color: var(--primary);
+}
+.admin-player-card .admin-player-pos {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.admin-player-actions { display: flex; gap: 4px; }
+
+.admin-log-entry {
+  padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  line-height: 1.5;
+}
+.admin-log-entry.warn { color: #ffb030; }
+.admin-log-entry.error { color: #ff4560; }
+.admin-log-entry.info { color: #00e5ff; }
+.admin-log-entry.ok { color: #00e676; }
+
+/* 자유 비행 모드 활성화 시 HUD 테두리 효과 */
+body.admin-fly-active #hud::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  border: 2px solid rgba(0,229,255,0.25);
+  pointer-events: none;
+  z-index: 50;
+  border-radius: 4px;
+}
+body.admin-god-active #hud::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  border: 2px solid rgba(255,69,96,0.2);
+  pointer-events: none;
+  z-index: 50;
+  border-radius: 4px;
+}
+
+
+/* ═══════════════════════════════════════════
+   📱 모바일 터치 컨트롤
+═══════════════════════════════════════════ */
+
+/* 터치 기기에서만 표시 */
+@media (pointer: coarse) {
+  #m-controls { display: block !important; }
+
+  /* 로그인 화면 모바일 최적화 */
+  #lock-screen {
+    padding: 20px !important;
+  }
+  #lock-screen .glass-panel {
+    width: 100% !important;
+    max-width: 380px !important;
+    margin: auto;
+  }
+
+  /* 관리자 버튼 — 모바일에서 더 크게 */
+  #admin-toggle-btn {
+    font-size: 14px !important;
+    padding: 18px 10px !important;
+  }
+
+  /* 관리자 패널 — 모바일 전체 너비 */
+  #admin-panel {
+    width: 96vw !important;
+    max-width: 96vw !important;
+    right: 2vw !important;
+    top: 2vh !important;
+    max-height: 96vh !important;
+    overflow-y: auto;
+  }
+
+  /* HUD 통계 — 모바일에서 작게 */
+  #hud { font-size: 11px !important; }
+
+  /* 미니맵 — 모바일에서 약간 크게 */
+  #minimap-container { transform: scale(1.1); transform-origin: top right; }
+
+  /* 공지사항 — 모바일 위치 조정 */
+  #notice { bottom: 220px !important; }
+}
+
+/* ── 조이스틱 베이스 ── */
+#m-joy-base {
+  position: fixed;
+  bottom: 90px;
+  left: 30px;
+  width: 120px;
+  height: 120px;
+  background: rgba(255,255,255,0.08);
+  border: 2px solid rgba(255,255,255,0.2);
+  border-radius: 50%;
+  z-index: 600;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ── 조이스틱 노브 ── */
+#m-joy-knob {
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 50px; height: 50px;
+  background: radial-gradient(circle, rgba(0,229,255,0.6) 0%, rgba(0,150,200,0.4) 100%);
+  border: 2px solid rgba(0,229,255,0.6);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: none;
+  box-shadow: 0 0 12px rgba(0,229,255,0.4);
+}
+
+/* ── 액션 버튼 그룹 ── */
+#m-actions {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  z-index: 600;
+}
+
+/* ── 개별 버튼 ── */
+.m-btn {
+  width: 62px;
+  height: 62px;
+  background: rgba(255,255,255,0.10);
+  border: 1.5px solid rgba(255,255,255,0.25);
+  border-radius: 14px;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1.2;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.1s, transform 0.08s;
+  padding: 0;
+}
+.m-btn span {
+  font-size: 9px;
+  color: rgba(255,255,255,0.65);
+  margin-top: 2px;
+}
+.m-btn:active {
+  background: rgba(0,229,255,0.25);
+  border-color: rgba(0,229,255,0.6);
+  transform: scale(0.93);
+}
+#m-btn-jump { border-color: rgba(100,200,255,0.4); }
+#m-btn-e    { border-color: rgba(0,230,118,0.4); }
+
+
+
+/* ═══════════════════════════════════════════
+   📱 가로 모드 (Landscape) 최적화
+═══════════════════════════════════════════ */
+
+/* 가로 모드 진입 유도 오버레이 (포트레이트에서만 표시) */
+#rotate-hint {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(4,10,24,0.95);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+  color: #fff;
+  text-align: center;
+  padding: 24px;
+}
+#rotate-hint .rotate-icon {
+  font-size: 52px;
+  animation: rotateHint 1.6s ease-in-out infinite;
+}
+#rotate-hint p {
+  font-size: 15px;
+  color: rgba(255,255,255,0.75);
+  line-height: 1.5;
+}
+#rotate-hint button {
+  margin-top: 8px;
+  padding: 10px 24px;
+  background: rgba(0,229,255,0.15);
+  border: 1px solid rgba(0,229,255,0.4);
+  border-radius: 24px;
+  color: #00e5ff;
+  font-size: 13px;
+  cursor: pointer;
+}
+@keyframes rotateHint {
+  0%   { transform: rotate(0deg); }
+  40%  { transform: rotate(90deg); }
+  60%  { transform: rotate(90deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* 터치 기기 + 포트레이트 → 힌트 표시 (단, 로그인 전에만) */
+@media (pointer: coarse) and (orientation: portrait) {
+  body.game-active #rotate-hint {
+    display: flex;
+  }
+}
+
+/* ── 가로 모드 컨트롤 위치 조정 ── */
+@media (pointer: coarse) and (orientation: landscape) {
+
+  /* 조이스틱 — 더 낮게, 왼쪽 safe-area 고려 */
+  #m-joy-base {
+    bottom: 14px;
+    left: max(20px, env(safe-area-inset-left, 20px));
+    width: 100px;
+    height: 100px;
+  }
+  #m-joy-knob {
+    width: 40px;
+    height: 40px;
+  }
+
+  /* 액션 버튼 — 오른쪽 safe-area 고려, 더 작게 */
+  #m-actions {
+    bottom: 12px;
+    right: max(18px, env(safe-area-inset-right, 18px));
+    gap: 8px;
+  }
+  .m-btn {
+    width: 54px;
+    height: 54px;
+    font-size: 16px;
+    border-radius: 12px;
+  }
+  .m-btn span { font-size: 8px; }
+
+  /* 공지사항 — 컨트롤과 겹치지 않게 */
+  #notice {
+    bottom: 140px !important;
+  }
+
+  /* HUD — 작은 화면에 맞게 압축 */
+  #hud {
+    font-size: 10px !important;
+  }
+
+  /* 미니맵 — 가로모드에서 약간 축소 */
+  #minimap-container {
+    transform: scale(0.85) !important;
+    transform-origin: top right !important;
+  }
+
+  /* 관리자 패널 — 가로모드에서 절반 너비, 전체 높이 */
+  #admin-panel {
+    width: 46vw !important;
+    max-width: 340px !important;
+    height: 92vh !important;
+    max-height: 92vh !important;
+    top: 4vh !important;
+    right: 12px !important;
+    overflow-y: auto;
+  }
+
+  /* 관리자 버튼 */
+  #admin-toggle-btn {
+    font-size: 11px !important;
+    padding: 12px 6px !important;
+  }
+
+  /* 로그인 화면 — 가로모드 압축 */
+  #lock-screen {
+    overflow-y: auto !important;
+    padding: 12px !important;
+  }
+  #lock-screen .glass-panel {
+    padding: 16px 20px !important;
+    gap: 8px !important;
+  }
+  #lock-screen h2 { font-size: 18px !important; margin-bottom: 4px !important; }
+  #lock-screen .controls-hint { display: none !important; }
+
+  /* 대시보드 패널 — 가로모드 전체 너비 */
+  #dashboard {
+    width: 90vw !important;
+    max-height: 90vh !important;
+    top: 5vh !important;
+    overflow-y: auto;
+  }
+
+  /* 투표 팝업 위치 조정 */
+  #vote-popup {
+    bottom: 90px !important;
+  }
+}
+
+/* HTML/Body 가로 확장 */
+@media (orientation: landscape) {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+  canvas#c {
+    width: 100vw !important;
+    height: 100vh !important;
+  }
+}
+

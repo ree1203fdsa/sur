@@ -192,6 +192,157 @@ let currentUsername = "";
 let currentPassword = "";
 let isCloudConnected = false;
 let autoSaveInterval = null;
+
+// ── ADMIN STATE (ree1203 전용) ──
+const ADMIN_ID = 'ree1203';
+const adminState = {
+  godMode: false,
+  invisible: false,
+  flyMode: false,
+  serverLocked: false,
+  autoSanction: false,
+  spectateTarget: null,
+  flyY: 0,
+  logs: [],
+  playerPositions: {},
+};
+let adminPanelOpen = false;
+let adminLogInterval = null;
+let adminPlayerInterval = null;
+
+// ── MULTIPLAYER STATE ──
+const otherPlayers = {}; // { username: { group, lastSeen, x, y, angle, label } }
+let multiplayerBroadcastInterval = null;
+let multiplayerFetchInterval = null;
+const PLAYER_COLORS = [0x00c8ff, 0xff6600, 0x00ff88, 0xff00cc, 0xffcc00, 0xff4444, 0x88ff00];
+
+function getPlayerColor(username) {
+  let hash = 0;
+  for (let i = 0; i < username.length; i++) hash = (hash * 31 + username.charCodeAt(i)) | 0;
+  return PLAYER_COLORS[Math.abs(hash) % PLAYER_COLORS.length];
+}
+
+function createOtherPlayerModel(username) {
+  const group = new THREE.Group();
+  const color = getPlayerColor(username);
+
+  const bodyMat = new THREE.MeshLambertMaterial({ color: 0x334455 });
+  const accentMat = new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.5 });
+
+  // Body
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.45, 0.22), bodyMat);
+  torso.position.y = 0.75;
+  group.add(torso);
+  // Head
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.28, 0.28), bodyMat);
+  head.position.y = 1.18;
+  group.add(head);
+  // Visor
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.1, 0.05), accentMat);
+  visor.position.set(0, 1.2, 0.15);
+  group.add(visor);
+  // Legs
+  [-0.1, 0.1].forEach(ox => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.4, 0.14), bodyMat);
+    leg.position.set(ox, 0.35, 0);
+    group.add(leg);
+  });
+  // Arms
+  [-0.28, 0.28].forEach(ox => {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.38, 0.12), bodyMat);
+    arm.position.set(ox, 0.72, 0);
+    group.add(arm);
+  });
+
+  // Name label (sprite)
+  const canvas = document.createElement('canvas');
+  canvas.width = 256; canvas.height = 64;
+  const ctx2d = canvas.getContext('2d');
+  ctx2d.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx2d.roundRect(4, 4, 248, 56, 8);
+  ctx2d.fill();
+  ctx2d.fillStyle = '#' + color.toString(16).padStart(6, '0');
+  ctx2d.font = 'bold 28px sans-serif';
+  ctx2d.textAlign = 'center';
+  ctx2d.fillText(username.substring(0, 12), 128, 38);
+  const tex = new THREE.CanvasTexture(canvas);
+  const spriteMat = new THREE.SpriteMaterial({ map: tex, depthTest: false });
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.scale.set(1.4, 0.35, 1);
+  sprite.position.y = 1.7;
+  group.add(sprite);
+
+  scene.add(group);
+  return group;
+}
+
+async function broadcastPlayerPosition() {
+  if (!currentUsername || !isCloudConnected) return;
+  if (adminState.invisible) return; // 투명 모드: 브로드캐스트 안 함
+  const payload = {
+    x: P.x, y: P.y, angle: P.angle,
+    t: Date.now()
+  };
+  try {
+    await fetch(`${DB_URL}online_players/${encodeURIComponent(currentUsername)}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) { /* silent */ }
+}
+
+async function fetchOnlinePlayers() {
+  if (!isCloudConnected) return;
+  try {
+    const res = await fetch(`${DB_URL}online_players.json`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data) return;
+    const now = Date.now();
+    const seen = new Set();
+
+    for (const [uname, info] of Object.entries(data)) {
+      if (uname === currentUsername) continue;
+      if (now - (info.t || 0) > 15000) continue; // stale > 15s
+      seen.add(uname);
+      if (!otherPlayers[uname]) {
+        otherPlayers[uname] = { group: createOtherPlayerModel(uname), x: info.x, y: info.y, angle: info.angle };
+      } else {
+        otherPlayers[uname].x = info.x;
+        otherPlayers[uname].y = info.y;
+        otherPlayers[uname].angle = info.angle;
+      }
+      otherPlayers[uname].lastSeen = now;
+    }
+
+    // Remove disconnected players
+    for (const uname of Object.keys(otherPlayers)) {
+      if (!seen.has(uname)) {
+        scene.remove(otherPlayers[uname].group);
+        delete otherPlayers[uname];
+      }
+    }
+  } catch (e) { /* silent */ }
+}
+
+async function removePlayerFromOnline() {
+  if (!currentUsername) return;
+  try {
+    await fetch(`${DB_URL}online_players/${encodeURIComponent(currentUsername)}.json`, { method: 'DELETE' });
+  } catch (e) { /* silent */ }
+}
+
+function startMultiplayer() {
+  if (multiplayerBroadcastInterval) clearInterval(multiplayerBroadcastInterval);
+  if (multiplayerFetchInterval) clearInterval(multiplayerFetchInterval);
+  broadcastPlayerPosition();
+  fetchOnlinePlayers();
+  multiplayerBroadcastInterval = setInterval(broadcastPlayerPosition, 300);
+  multiplayerFetchInterval = setInterval(fetchOnlinePlayers, 1500);
+}
+
+window.addEventListener('beforeunload', removePlayerFromOnline);
 let viewMode = 'third';
 let rainIntensity = 0.0;
 let weatherState = 'CLEAR'; // CLEAR, CLOUDY, RAINY, FOGGY
@@ -389,6 +540,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
       saveUser(currentUsername, currentPassword);
     }, 15000);
 
+    startMultiplayer();
+    if (currentUsername === ADMIN_ID) initAdminPanel();
     showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
   } catch (err) {
     if (err.message === "PERMISSION_DENIED") {
@@ -490,7 +643,7 @@ document.getElementById('registerBtn').addEventListener('click', async () => {
 window.startGuest = function startGuest() {
   currentUsername = '게스트';
   currentPassword = '';
-  isCloudConnected = false;
+  isCloudConnected = true; // Force online status
 
   const guestSpawn = findSafeSpawn(32.5, 32.5);
   P.x = guestSpawn.x; P.y = guestSpawn.y; P.angle = -Math.PI / 2;
@@ -506,14 +659,18 @@ window.startGuest = function startGuest() {
 
   const cloudDot = document.getElementById('cloudDot');
   const cloudText = document.getElementById('cloudText');
-  if (cloudDot) { cloudDot.className = 'cloud-dot'; cloudText.textContent = '게스트 모드'; }
+  if (cloudDot) { 
+    cloudDot.className = 'cloud-dot connected'; // Green light
+    cloudText.textContent = '게스트 (온라인 연결됨)'; 
+  }
 
   document.getElementById('lock-screen').style.display = 'none';
 
   if (simInterval) clearInterval(simInterval);
   simInterval = setInterval(() => { Sim.tick(); updateDashboardData(); }, 10000);
 
-  showNotice('🎮 게스트 모드로 시작합니다! (저장 없음)');
+  startMultiplayer();
+  showNotice('🎮 게스트 모드로 온라인 연결되어 시작합니다!');
 }
 
 document.addEventListener('pointerlockchange', () => {
@@ -580,7 +737,11 @@ addEventListener('keydown', e => {
   K[e.key] = true;
   if (e.key === 'Escape' && dlgOpen) closeDialog();
   else if (e.key === 'Escape' && isDashboardOpen) toggleDashboard(false);
-  else if (e.key === 'Escape' && locked) document.exitPointerLock();
+  else if (e.key === 'Escape' && locked) {
+    document.exitPointerLock();
+    // 대기 중인 재난이 있으면 ESC 시 자동 표시
+    setTimeout(() => { if (_disasterQueue && _disasterQueue.length > 0) showNextDisasterModal(); }, 100);
+  }
   if (e.key === 'e' || e.key === 'E') interact();
   
   if (e.key === ' ' || e.key === 'Spacebar') {
@@ -1498,7 +1659,7 @@ function render(ts) {
   // ─ Movement ─
   let isMoving = false;
   if (!dlgOpen) {
-    const spd = 4.2 * dt;
+    const spd = (adminState.flyMode ? 8.0 : 4.2) * dt;
     let moveX = 0, moveZ = 0;
 
     // Movement forward/backwards relative to camera rotation
@@ -1526,6 +1687,12 @@ function render(ts) {
       isMoving = true;
     }
 
+    // 자유 비행 수직 이동 (Q/E)
+    if (adminState.flyMode) {
+      if (K['q'] || K['Q']) { adminState.flyY = Math.max(0, adminState.flyY - 6 * dt); }
+      if (K['e'] || K['E']) { adminState.flyY = Math.min(30, adminState.flyY + 6 * dt); }
+    }
+
     // Keyboard camera steering
     if (K['ArrowLeft']) {
       cameraYaw -= 2.0 * dt;
@@ -1545,8 +1712,13 @@ function render(ts) {
       // Apply collisions using MAP boundaries (P.y is the Z coord in maps)
       const nx = P.x + moveX;
       const nz = P.y + moveZ;
-      if (canMove(nx, P.y)) P.x = nx;
-      if (canMove(P.x, nz)) P.y = nz;
+      if (adminState.flyMode) {
+        P.x = Math.max(0.5, Math.min(MW - 0.5, nx));
+        P.y = Math.max(0.5, Math.min(MH - 0.5, nz));
+      } else {
+        if (canMove(nx, P.y)) P.x = nx;
+        if (canMove(P.x, nz)) P.y = nz;
+      }
 
       // Rotate player group to face movement direction
       const targetRotationY = Math.atan2(moveX, moveZ);
@@ -1569,7 +1741,8 @@ function render(ts) {
 
   // Update 3D player position
   if (playerGroup) {
-    playerGroup.position.set(P.x, P.h || 0, P.y);
+    const posY = adminState.flyMode ? adminState.flyY : (P.h || 0);
+    playerGroup.position.set(P.x, posY, P.y);
 
     // Player limb animations
     if (isMoving) {
@@ -1600,14 +1773,28 @@ function render(ts) {
     }
   }
 
+  // ── 관전 모드 카메라 ──
+  if (adminState.spectateTarget && camera) {
+    const tgt = otherPlayers[adminState.spectateTarget];
+    if (tgt) {
+      camera.position.set(tgt.x - Math.sin(cameraYaw) * 5, 4, tgt.y - Math.cos(cameraYaw) * 5);
+      camera.lookAt(new THREE.Vector3(tgt.x, 1, tgt.y));
+    } else {
+      adminState.spectateTarget = null;
+      adminLog('관전 대상이 오프라인 상태가 되었습니다.', 'warn');
+      const ss = document.getElementById('admin-spectate-status');
+      if (ss) ss.textContent = '관전 중 아님 (대상 오프라인)';
+    }
+  }
+
   // ── Camera position tracking (1st / 3rd Person / Bird View Toggle) ──
-  if (camera) {
-    const curH = P.h || 0;
+  if (camera && !adminState.spectateTarget) {
+    const curH = adminState.flyMode ? adminState.flyY : (P.h || 0);
     if (viewMode === 'third') {
       if (playerGroup) playerGroup.visible = true;
       const camDist = 4.2;
       let camX = P.x - Math.sin(cameraYaw) * Math.cos(cameraPitch) * camDist;
-      let camY = 0.8 + Math.sin(cameraPitch) * camDist + curH;
+      let camY = (adminState.flyMode ? 0.8 + adminState.flyY : 0.8) + Math.sin(cameraPitch) * camDist;
       let camZ = P.y - Math.cos(cameraYaw) * Math.cos(cameraPitch) * camDist;
       
       camY = Math.max(0.18, camY);
@@ -1616,7 +1803,7 @@ function render(ts) {
       camera.lookAt(new THREE.Vector3(P.x, 0.75 + curH, P.y));
     } else if (viewMode === 'first') {
       if (playerGroup) playerGroup.visible = false;
-      camera.position.set(P.x, 1.25 + curH, P.y);
+      camera.position.set(P.x, 1.25 + (adminState.flyMode ? adminState.flyY : curH), P.y);
       const targetX = P.x + Math.sin(cameraYaw) * Math.cos(cameraPitch);
       const targetY = 1.25 + curH + Math.sin(cameraPitch);
       const targetZ = P.y + Math.cos(cameraYaw) * Math.cos(cameraPitch);
@@ -1670,7 +1857,7 @@ function render(ts) {
 
   // ─ Game time progression ─
   gMin += dt * 6;
-  if (gMin >= 1440) { gMin -= 1440; dayN++; P.hunger = Math.max(0, P.hunger - 10); }
+  if (gMin >= 1440) { gMin -= 1440; dayN++; if (!adminState.godMode) P.hunger = Math.max(0, P.hunger - 10); }
 
   // ─ Weather State Machine ─
   weatherDuration -= dt * 6;
@@ -1913,10 +2100,12 @@ function render(ts) {
   mctx.stroke();
 
   // ── Stats decay ──
-  P.hunger = Math.max(0, P.hunger - dt * 0.22);
-  P.energy = Math.max(0, P.energy - dt * 0.12);
-  if (P.hunger < 15) P.health = Math.max(0, P.health - dt * 0.35);
-  if (P.energy < 10) P.happy  = Math.max(0, P.happy  - dt * 0.22);
+  if (!adminState.godMode) {
+    P.hunger = Math.max(0, P.hunger - dt * 0.22);
+    P.energy = Math.max(0, P.energy - dt * 0.12);
+    if (P.hunger < 15) P.health = Math.max(0, P.health - dt * 0.35);
+    if (P.energy < 10) P.happy  = Math.max(0, P.happy  - dt * 0.22);
+  }
 
   updateHUD();
 
@@ -1925,6 +2114,29 @@ function render(ts) {
 
   // Raycast for Citizen Hover Tooltip
   updateCitizenTooltip();
+
+  // Update other players' 3D positions
+  for (const [, op] of Object.entries(otherPlayers)) {
+    op.group.position.set(op.x, 0, op.y);
+    op.group.rotation.y = -op.angle + Math.PI;
+  }
+
+  // Draw other players on minimap
+  for (const [uname, op] of Object.entries(otherPlayers)) {
+    const px = (op.x - offX) * sc;
+    const py = (op.y - offY) * sc;
+    if (px >= 0 && px <= MS && py >= 0 && py <= MS) {
+      const col = getPlayerColor(uname);
+      const r = (col >> 16) & 0xff, g = (col >> 8) & 0xff, b = col & 0xff;
+      mctx.fillStyle = `rgb(${r},${g},${b})`;
+      mctx.shadowColor = `rgb(${r},${g},${b})`;
+      mctx.shadowBlur = 5;
+      mctx.beginPath();
+      mctx.arc(px, py, 2.5, 0, Math.PI * 2);
+      mctx.fill();
+      mctx.shadowBlur = 0;
+    }
+  }
 
   // WebGL Render pass
   renderer.render(scene, camera);
@@ -2796,6 +3008,90 @@ function updateDashboardData() {
 
 // ── 👤 3D CITIZENS NAVIGATION & RENDER logic ──
 
+function updateCitizenGoal(cm, hour) {
+  const citizen = Sim.citizens.find(c => c.id === cm.citizenId);
+  if (!citizen) return;
+
+  let targetType = 0; // 0: wander streets
+
+  // Routine schedule
+  if (hour >= 8 && hour < 12) {
+    // 08:00 ~ 12:00 출근 (회사/연구소/학교/정부청사)
+    if (citizen.job) {
+      if (citizen.job.includes('IT') || citizen.job.includes('AI')) targetType = 4; // 테크노 밸리
+      else if (citizen.job.includes('금융') || citizen.job.includes('경제')) targetType = 2; // 파이낸스
+      else if (citizen.job.includes('군사') || citizen.job.includes('치안')) targetType = 1; // 정부청사
+      else if (citizen.job.includes('교육') || citizen.job.includes('연구')) targetType = 11; // NNU
+      else if (citizen.job.includes('메디컬')) targetType = 10; // 병원
+      else targetType = 3; // 비즈니스 대기업
+    } else {
+      targetType = 0; // 실업자는 배회
+    }
+  } else if (hour >= 12 && hour < 13) {
+    // 12:00 ~ 13:00 점심시간 (상업지구 쇼핑몰/음식점)
+    targetType = 5;
+  } else if (hour >= 13 && hour < 18) {
+    // 13:00 ~ 18:00 오후 근무 복귀
+    if (citizen.job) {
+      if (citizen.job.includes('IT') || citizen.job.includes('AI')) targetType = 4;
+      else if (citizen.job.includes('금융') || citizen.job.includes('경제')) targetType = 2;
+      else if (citizen.job.includes('군사') || citizen.job.includes('치안')) targetType = 1;
+      else if (citizen.job.includes('교육') || citizen.job.includes('연구')) targetType = 11;
+      else if (citizen.job.includes('메디컬')) targetType = 10;
+      else targetType = 3;
+    } else {
+      targetType = 0;
+    }
+  } else if (hour >= 18 && hour < 22) {
+    // 18:00 ~ 22:00 퇴근 및 여가 (부자는 미디어/스포츠, 빈민/일반인은 집)
+    if (citizen.classGroup === '자본가') {
+      targetType = Math.random() > 0.5 ? 7 : 12; // 미디어타워 또는 스포츠 지구
+    } else {
+      targetType = 8; // 주거 단지 (집)
+    }
+  } else {
+    // 22:00 ~ 08:00 야간 숙면
+    targetType = 8; // 주거 단지
+  }
+
+  // Find all buildings of target type
+  if (targetType > 0) {
+    const list = [];
+    for (let y = 0; y < MH; y++) {
+      for (let x = 0; x < MW; x++) {
+        if (MAP[y][x] === targetType) {
+          list.push({x, y});
+        }
+      }
+    }
+    if (list.length > 0) {
+      const selected = list[Math.floor(Math.random() * list.length)];
+      cm.goalX = selected.x;
+      cm.goalY = selected.y;
+      cm.targetBuildingType = targetType;
+    } else {
+      cm.goalX = 32; cm.goalY = 32;
+      cm.targetBuildingType = 0;
+    }
+  } else {
+    // Wander streets: pick a random road tile
+    const roads = [];
+    for (let y = 3; y < MH - 3; y++) {
+      for (let x = 3; x < MW - 3; x++) {
+        if (MAP[y][x] === 0) roads.push({x, y});
+      }
+    }
+    if (roads.length > 0) {
+      const selected = roads[Math.floor(Math.random() * roads.length)];
+      cm.goalX = selected.x;
+      cm.goalY = selected.y;
+    } else {
+      cm.goalX = 32; cm.goalY = 32;
+    }
+    cm.targetBuildingType = 0;
+  }
+}
+
 function init3DCitizens() {
   citizenMeshes.forEach(cm => scene.remove(cm.mesh));
   citizenMeshes = [];
@@ -2831,22 +3127,62 @@ function init3DCitizens() {
     mesh.position.set(spawnTile.x + 0.5, 0.175, spawnTile.y + 0.5);
     scene.add(mesh);
 
-    citizenMeshes.push({
+    const cm = {
       mesh: mesh,
       citizenId: citizen.id,
       tx: spawnTile.x,
       ty: spawnTile.y,
       targetX: spawnTile.x,
       targetY: spawnTile.y,
+      goalX: spawnTile.x,
+      goalY: spawnTile.y,
+      targetBuildingType: 0,
+      isInside: false,
+      lastCheckedHour: -1,
       speed: 0.8 + Math.random() * 0.6
-    });
+    };
+    
+    // Set initial goal based on time
+    const hour = Math.floor(gMin / 60) % 24;
+    updateCitizenGoal(cm, hour);
+    cm.lastCheckedHour = hour;
+    
+    citizenMeshes.push(cm);
   }
 }
 
 function update3DCitizens(dt) {
   tsGlobal += dt * 1000;
+  const hour = Math.floor(gMin / 60) % 24;
   
   citizenMeshes.forEach(cm => {
+    // Check if hour changed to reset goals
+    if (cm.lastCheckedHour !== hour) {
+      updateCitizenGoal(cm, hour);
+      cm.lastCheckedHour = hour;
+      cm.isInside = false;
+      cm.mesh.visible = true;
+      // Spawn near building boundary or random road
+      const roads = [];
+      for (let y = cm.ty - 1; y <= cm.ty + 1; y++) {
+        for (let x = cm.tx - 1; x <= cm.tx + 1; x++) {
+          if (x >= 0 && x < MW && y >= 0 && y < MH && MAP[y][x] === 0) {
+            roads.push({x, y});
+          }
+        }
+      }
+      if (roads.length > 0) {
+        const r = roads[Math.floor(Math.random() * roads.length)];
+        cm.tx = r.x; cm.ty = r.y;
+        cm.targetX = r.x; cm.targetY = r.y;
+        cm.mesh.position.set(r.x + 0.5, 0.175, r.y + 0.5);
+      }
+    }
+
+    if (cm.isInside) {
+      return; // Skip walking if inside building
+    }
+
     const pos = cm.mesh.position;
     const targetWorldX = cm.targetX + 0.5;
     const targetWorldZ = cm.targetY + 0.5;
@@ -2858,22 +3194,55 @@ function update3DCitizens(dt) {
     if (dist < 0.03) {
       cm.tx = cm.targetX;
       cm.ty = cm.targetY;
+
+      // Check if reached building goal
+      const distToGoal = Math.abs(cm.tx - cm.goalX) + Math.abs(cm.ty - cm.goalY);
+      if (distToGoal <= 1.5 && cm.targetBuildingType > 0) {
+        cm.isInside = true;
+        cm.mesh.visible = false;
+        return;
+      }
       
       const dirs = [[0, 1], [0, -1], [1, 0], [-1, 0]];
-      const validDirs = [];
+      let bestDir = null;
+      let minTargetDist = Infinity;
       
       dirs.forEach(([ox, oy]) => {
         const nx = cm.tx + ox;
         const ny = cm.ty + oy;
-        if (nx >= 0 && nx < MW && ny >= 0 && ny < MH && MAP[ny][nx] === 0) {
-          validDirs.push({x: nx, y: ny});
+        if (nx >= 0 && nx < MW && ny >= 0 && ny < MH) {
+          const isRoad = MAP[ny][nx] === 0;
+          const isTarget = nx === cm.goalX && ny === cm.goalY;
+          if (isRoad || isTarget) {
+            const dX = cm.goalX - nx;
+            const dY = cm.goalY - ny;
+            const d = dX * dX + dY * dY;
+            if (d < minTargetDist) {
+              minTargetDist = d;
+              bestDir = {x: nx, y: ny};
+            }
+          }
         }
       });
       
-      if (validDirs.length > 0) {
-        const next = validDirs[Math.floor(Math.random() * validDirs.length)];
-        cm.targetX = next.x;
-        cm.targetY = next.y;
+      if (bestDir) {
+        cm.targetX = bestDir.x;
+        cm.targetY = bestDir.y;
+      } else {
+        // Fallback random wander
+        const validDirs = [];
+        dirs.forEach(([ox, oy]) => {
+          const nx = cm.tx + ox;
+          const ny = cm.ty + oy;
+          if (nx >= 0 && nx < MW && ny >= 0 && ny < MH && MAP[ny][nx] === 0) {
+            validDirs.push({x: nx, y: ny});
+          }
+        });
+        if (validDirs.length > 0) {
+          const next = validDirs[Math.floor(Math.random() * validDirs.length)];
+          cm.targetX = next.x;
+          cm.targetY = next.y;
+        }
       }
     } else {
       const spd = cm.speed * dt;
@@ -5473,3 +5842,3260 @@ function takeExam() {
   updateHUD();
 }
 window.takeExam = takeExam;
+
+// ══════════════════════════════════════════════════════
+//   👥 NPC 대화 및 상호작용 시스템 비즈니스 로직
+// ══════════════════════════════════════════════════════
+
+let selectedCitizen = null;
+
+function enrichCitizensStances() {
+  if (!Sim.citizens) return;
+  Sim.citizens.forEach(c => {
+    if (typeof c.politicalStance === 'undefined') {
+      c.politicalStance = Math.random() > 0.5 ? '진보파' : '보수파';
+    }
+    if (typeof c.classGroup === 'undefined') {
+      if (!c.job) {
+        c.classGroup = '실업자';
+      } else {
+        c.classGroup = c.salary >= 3500000 ? '자본가' : '근로자';
+      }
+    }
+    if (typeof c.affinity === 'undefined') {
+      c.affinity = 40 + Math.floor(Math.random() * 20); // 40-60%
+    }
+  });
+}
+
+// Hook Sim.init
+const _origSimInit = Sim.init.bind(Sim);
+Sim.init = function() {
+  _origSimInit();
+  enrichCitizensStances();
+};
+
+function openNpcDialog(citizen) {
+  selectedCitizen = citizen;
+  const modal = document.getElementById('npc-dialog-modal');
+  if (!modal) return;
+
+  modal.style.display = 'flex';
+  document.exitPointerLock();
+
+  // Populate UI
+  document.getElementById('npc-name').textContent = citizen.name;
+  document.getElementById('npc-age-gender').textContent = `${citizen.age}세 · ${citizen.gender}`;
+  document.getElementById('npc-job').textContent = citizen.job || '실업자';
+  
+  let moodText = '😐 보통';
+  let moodColor = 'var(--gold)';
+  if (citizen.happiness >= 75) { moodText = '😊 행복'; moodColor = 'var(--green)'; }
+  else if (citizen.happiness < 45) { moodText = '😭 불만'; moodColor = '#ff4560'; }
+  document.getElementById('npc-mood').textContent = `${moodText} (${Math.round(citizen.happiness)}%)`;
+  document.getElementById('npc-mood').style.color = moodColor;
+
+  document.getElementById('npc-stance').textContent = `${citizen.politicalStance} · ${citizen.classGroup}`;
+  
+  updateNpcAffinityUI();
+
+  // Reset dialogue
+  document.getElementById('npc-dialogue-text').textContent = `"안녕하세요, 대통령님! 네오폴리스 시정에 대해 이야기를 나눌 수 있어 영광입니다."`;
+
+  // Build dialogue options
+  buildNpcDialogueOptions();
+}
+
+function updateNpcAffinityUI() {
+  if (!selectedCitizen) return;
+  const fill = document.getElementById('npc-affinity-fill');
+  const val = document.getElementById('npc-affinity-val');
+  if (fill && val) {
+    fill.style.width = selectedCitizen.affinity + '%';
+    val.textContent = selectedCitizen.affinity + '%';
+  }
+}
+
+function closeNpcDialog() {
+  const modal = document.getElementById('npc-dialog-modal');
+  if (modal) modal.style.display = 'none';
+  selectedCitizen = null;
+  c.requestPointerLock();
+}
+window.closeNpcDialog = closeNpcDialog;
+
+function buildNpcDialogueOptions() {
+  const box = document.getElementById('npc-options-box');
+  if (!box) return;
+  box.innerHTML = '';
+
+  const options = [
+    { label: '👋 "안녕하세요! 오늘 기분은 어떠신가요?"', action: () => selectNpcOption('greet') },
+    { label: '🏢 "최근 정부 정책이나 삶에 대해 어떻게 생각하십니까?"', action: () => selectNpcOption('policy') },
+    { label: '👥 "대통령으로서 귀하의 의견을 적극 경청하겠습니다."', action: () => selectNpcOption('listen') },
+    { label: '🚪 대화 종료', action: () => closeNpcDialog() }
+  ];
+
+  options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'npc-option-btn';
+    btn.innerHTML = `<span>${opt.label}</span> <span>➔</span>`;
+    btn.onclick = () => { playClick(); opt.action(); };
+    box.appendChild(btn);
+  });
+}
+
+function selectNpcOption(type) {
+  if (!selectedCitizen) return;
+  const dialogueText = document.getElementById('npc-dialogue-text');
+  
+  let reply = '';
+  let affinityChange = 0;
+
+  if (type === 'greet') {
+    if (selectedCitizen.happiness >= 75) {
+      reply = `"아주 좋습니다! 요즘 네오폴리스는 정말 살기 좋은 도시가 된 것 같습니다."`;
+      affinityChange = 5;
+    } else if (selectedCitizen.happiness < 45) {
+      reply = `"솔직히 요즘 사는 게 너무 팍팍하네요. 걱정이 많습니다."`;
+      affinityChange = -2;
+    } else {
+      reply = `"그저 평범하게 지내고 있습니다. 특별히 나쁜 일은 없네요."`;
+      affinityChange = 2;
+    }
+  } else if (type === 'policy') {
+    // Stance/Class based responses
+    if (selectedCitizen.classGroup === '실업자') {
+      const basicIncomeActive = lawState && lawState['eco01']; // 기본소득제
+      if (basicIncomeActive) {
+        reply = `"직장이 없어서 막막했는데, 정부의 기본소득 매월 지원제 덕분에 한숨 돌렸습니다. 지지합니다!"`;
+        affinityChange = 12;
+      } else {
+        reply = `"일자리가 없어서 당장 먹고 살 돈조차 부족합니다. 서민 구제 정책을 늘려주세요!"`;
+        affinityChange = -8;
+      }
+    } else if (selectedCitizen.classGroup === '자본가') {
+      const taxCorporateReduced = Sim.taxRateCorporate < 10;
+      if (taxCorporateReduced) {
+        reply = `"법인세 감면과 규제 완화 덕분에 사업하기 정말 좋아졌습니다. 아주 훌륭한 시정입니다."`;
+        affinityChange = 15;
+      } else {
+        reply = `"기업들의 부담이 나날이 커져 걱정입니다. 세금을 줄여 고용을 활성화해야 합니다."`;
+        affinityChange = -5;
+      }
+    } else {
+      // 근로자
+      const hoursLimitActive = lawState && lawState['lab01']; // 주52시간제
+      if (hoursLimitActive) {
+        reply = `"주 52시간 상한제 정책 시행 덕분에 저녁에 취미 생활을 즐길 수 있어 만족스럽습니다."`;
+        affinityChange = 10;
+      } else {
+        reply = `"잔업과 야근이 일상이라 삶의 여유가 없습니다. 노동자 처우 개선을 바랄 뿐입니다."`;
+        affinityChange = -4;
+      }
+    }
+  } else if (type === 'listen') {
+    if (selectedCitizen.politicalStance === '진보파') {
+      reply = `"대통령님께서 직접 들어주시니 기쁩니다. 더 건강하고 복지가 튼튼한 복지국가를 만들어주세요!"`;
+      affinityChange = 8;
+    } else {
+      reply = `"제 이야기를 귀담아 주셔서 감사합니다. 자유 경쟁과 튼튼한 안보, 재정 건전성을 유지해주시길 믿습니다."`;
+      affinityChange = 8;
+    }
+    // 대통령 경청에 의한 전체 지지율 보너스 효과
+    Sim.approvalRating = Math.min(100, Sim.approvalRating + 1.5);
+  }
+
+  // Apply affinity change
+  selectedCitizen.affinity = Math.max(0, Math.min(100, selectedCitizen.affinity + affinityChange));
+  updateNpcAffinityUI();
+
+  // Display reply
+  dialogueText.textContent = reply;
+
+  // Recalculate global approval rating based on citizen average affinity
+  let totalAff = 0;
+  let count = 0;
+  Sim.citizens.forEach(c => {
+    if (typeof c.affinity !== 'undefined') {
+      totalAff += c.affinity;
+      count++;
+    }
+  });
+  if (count > 0) {
+    const avg = totalAff / count;
+    // Blend current approval with average affinity (45/55 blend)
+    Sim.approvalRating = Sim.approvalRating * 0.45 + avg * 0.55;
+  }
+
+  updateHUD();
+  updateDashboardData();
+
+  // Change option buttons to only exit
+  const box = document.getElementById('npc-options-box');
+  if (box) {
+    box.innerHTML = '';
+    const exitBtn = document.createElement('button');
+    exitBtn.className = 'npc-option-btn';
+    exitBtn.style.borderColor = 'var(--green)';
+    exitBtn.innerHTML = `<span>🚪 의견을 경청했습니다. 대화 마무리</span> <span>➔</span>`;
+    exitBtn.onclick = () => { playClick(); closeNpcDialog(); };
+    box.appendChild(exitBtn);
+  }
+}
+
+// Click to Raycast and interact with NPC
+c.addEventListener('click', e => {
+  if (dlgOpen || isDashboardOpen || document.getElementById('lock-screen').style.display !== 'none' || P.isInterior) return;
+
+  // Set raycaster
+  raycaster.setFromCamera(locked ? new THREE.Vector2(0, 0) : mouse, camera);
+  
+  const meshesOnly = citizenMeshes.map(cm => cm.mesh);
+  const intersects = raycaster.intersectObjects(meshesOnly);
+
+  if (intersects.length > 0 && intersects[0].distance < 12) {
+    const hitMesh = intersects[0].object;
+    const cm = citizenMeshes.find(x => x.mesh === hitMesh);
+    const citizen = Sim.citizens.find(c => c.id === cm.citizenId);
+    if (citizen) {
+      openNpcDialog(citizen);
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════════
+//   💼 플레이어 직업 시스템
+// ══════════════════════════════════════════════════════
+const PLAYER_JOBS = [
+  { id: 'pj1', name: '편의점 알바', category: '서비스', salary: 1800000, energy: -10, tier: '인턴', promoDays: 15, nextId: 'pj2' },
+  { id: 'pj2', name: '카페 바리스타', category: '서비스', salary: 2400000, energy: -12, tier: '주니어', promoDays: 20, nextId: 'pj3' },
+  { id: 'pj3', name: '레스토랑 매니저', category: '서비스', salary: 3800000, energy: -15, tier: '시니어', promoDays: 30, nextId: null },
+  { id: 'pj4', name: 'IT 스타트업 개발자', category: 'IT/AI', salary: 4200000, energy: -15, tier: '주니어', promoDays: 20, nextId: 'pj5' },
+  { id: 'pj5', name: 'AI 수석 엔지니어', category: 'IT/AI', salary: 8500000, energy: -20, tier: '시니어', promoDays: 30, nextId: 'pj6' },
+  { id: 'pj6', name: 'CTO (최고기술책임자)', category: 'IT/AI', salary: 18000000, energy: -25, tier: '임원', promoDays: null, nextId: null },
+  { id: 'pj7', name: '주니어 의사', category: '메디컬', salary: 5500000, energy: -20, tier: '주니어', promoDays: 25, nextId: 'pj8' },
+  { id: 'pj8', name: '전문의 (외과)', category: '메디컬', salary: 12000000, energy: -25, tier: '시니어', promoDays: 35, nextId: null },
+  { id: 'pj9', name: '금융 애널리스트', category: '금융', salary: 5000000, energy: -15, tier: '주니어', promoDays: 20, nextId: 'pj10' },
+  { id: 'pj10', name: '투자 펀드 매니저', category: '금융', salary: 15000000, energy: -20, tier: '시니어', promoDays: 30, nextId: null },
+];
+
+const playerJob = {
+  current: null,   // PLAYER_JOBS의 id
+  tenureDays: 0,   // 재직일수
+  promoPct: 0,     // 승진 진행도 (0~100)
+  totalEarned: 0,  // 누적 수령액
+};
+
+function openJobModal() {
+  initAudio();
+  renderJobModal();
+  document.getElementById('job-modal').style.display = 'block';
+}
+
+function closeJobModal() {
+  document.getElementById('job-modal').style.display = 'none';
+  setTimeout(() => { if (!isDashboardOpen) c.requestPointerLock(); }, 200);
+}
+
+function renderJobModal() {
+  const job = PLAYER_JOBS.find(j => j.id === playerJob.current);
+
+  document.getElementById('job-current-name').textContent = job ? job.name : '없음 (실직자)';
+  document.getElementById('job-current-salary').textContent = job ? `₦${job.salary.toLocaleString()}` : '₦0';
+  document.getElementById('job-tenure-days').textContent = `${playerJob.tenureDays}일`;
+  document.getElementById('job-current-tier').textContent = job ? job.tier : '-';
+
+  const promoRow = document.getElementById('job-promotion-row');
+  if (job && job.nextId) {
+    promoRow.style.display = 'block';
+    document.getElementById('job-promo-bar').style.width = playerJob.promoPct + '%';
+    document.getElementById('job-promo-pct').textContent = Math.round(playerJob.promoPct) + '%';
+  } else {
+    promoRow.style.display = 'none';
+  }
+
+  // 직업 버튼 라벨 갱신
+  document.getElementById('job-btn-label').textContent = job ? `${job.name} (월 ₦${(job.salary/10000).toFixed(0)}만)` : '직업 센터';
+
+  // 채용 공고 렌더링
+  const list = document.getElementById('job-listings');
+  list.innerHTML = '';
+  const categories = [...new Set(PLAYER_JOBS.map(j => j.category))];
+
+  categories.forEach(cat => {
+    const catJobs = PLAYER_JOBS.filter(j => j.category === cat && j.tier === '인턴' || (PLAYER_JOBS.filter(j2 => j2.category === cat && j2.tier === '인턴').length === 0 && PLAYER_JOBS.filter(j2 => j2.category === cat)[0]?.id === j.id));
+    const baseJob = PLAYER_JOBS.find(j => j.category === cat && (j.tier === '인턴' || j.tier === '주니어'));
+    if (!baseJob) return;
+    const isCurrentCat = job && job.category === cat;
+    const div = document.createElement('div');
+    div.style.cssText = 'background:rgba(0,229,255,0.04);border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;';
+    div.innerHTML = `
+      <div>
+        <div style="font-weight:600;font-size:13px;">${baseJob.name} <span style="color:var(--text-dim);font-size:11px;">(${cat})</span></div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:3px;">시작급 월 ₦${baseJob.salary.toLocaleString()} · 에너지 ${baseJob.energy}/근무</div>
+      </div>
+      <button class="form-btn login-btn" style="font-size:11px;padding:5px 12px;${isCurrentCat ? 'opacity:0.4;cursor:not-allowed;' : ''}"
+        onclick="${isCurrentCat ? '' : `playerHireJob('${baseJob.id}')`}">${isCurrentCat ? '재직 중' : '입사 지원'}</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function playerHireJob(jobId) {
+  playClick();
+  playerJob.current = jobId;
+  playerJob.tenureDays = 0;
+  playerJob.promoPct = 0;
+  const job = PLAYER_JOBS.find(j => j.id === jobId);
+  showNotice(`✅ ${job.name} 입사 완료! 월급 ₦${job.salary.toLocaleString()}`);
+  addEventLog('💼 취업', `${job.name} 입사 완료. 월 ₦${job.salary.toLocaleString()}`);
+  renderJobModal();
+}
+
+function playerQuitJob() {
+  if (!playerJob.current) { showNotice('⚠️ 현재 직업이 없습니다.'); return; }
+  const job = PLAYER_JOBS.find(j => j.id === playerJob.current);
+  playClick();
+  playerJob.current = null;
+  playerJob.tenureDays = 0;
+  playerJob.promoPct = 0;
+  showNotice(`🚪 ${job.name} 사직서 제출 완료`);
+  addEventLog('🚪 사직', `${job.name} 퇴사`);
+  renderJobModal();
+}
+
+function playerWorkShift() {
+  if (!playerJob.current) { showNotice('⚠️ 직업이 없습니다. 먼저 취업하세요!'); return; }
+  const job = PLAYER_JOBS.find(j => j.id === playerJob.current);
+  if (P.energy < Math.abs(job.energy)) { showNotice('⚡ 에너지 부족! 먼저 쉬거나 음식을 드세요.'); return; }
+
+  const shiftPay = Math.round(job.salary / 30);
+  P.energy = cap(P.energy + job.energy);
+  P.money += shiftPay;
+  playerJob.tenureDays++;
+  playerJob.totalEarned += shiftPay;
+  playCoin();
+
+  // 승진 처리
+  if (job.nextId && job.promoDays) {
+    playerJob.promoPct += (100 / job.promoDays);
+    if (playerJob.promoPct >= 100) {
+      playerJob.promoPct = 0;
+      playerJob.current = job.nextId;
+      const nextJob = PLAYER_JOBS.find(j => j.id === job.nextId);
+      showNotice(`🎉 승진! ${nextJob.name}으로 승진되었습니다! 월급 ₦${nextJob.salary.toLocaleString()}`);
+      addEventLog('🎉 승진', `${job.name} → ${nextJob.name}`);
+      addNews(`🎉 대통령이 ${nextJob.name}으로 승진!`);
+    } else {
+      showNotice(`⏱️ 근무 완료! ₦${shiftPay.toLocaleString()} 수령 (승진까지 ${Math.round(100 - playerJob.promoPct)}%)`);
+    }
+  } else {
+    showNotice(`⏱️ 근무 완료! ₦${shiftPay.toLocaleString()} 수령`);
+  }
+
+  updateHUD();
+  renderJobModal();
+}
+
+// 날짜 변경 시 직업 재직일 갱신 (render 루프의 자정 이벤트와 연동)
+function tickPlayerJob() {
+  if (!playerJob.current) return;
+  // 월급은 매 30 재직일마다 자동 추가 지급
+  if (playerJob.tenureDays > 0 && playerJob.tenureDays % 30 === 0) {
+    const job = PLAYER_JOBS.find(j => j.id === playerJob.current);
+    P.money += job.salary;
+    playCoin();
+    addNews(`💰 월급 ₦${job.salary.toLocaleString()} 자동 입금 (${job.name})`);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//   🏦 국채 발행 시스템
+// ══════════════════════════════════════════════════════
+
+function updateBondUI() {
+  const debtEl = document.getElementById('bd-debt');
+  const interestEl = document.getElementById('bd-interest');
+  const ratioEl = document.getElementById('bd-ratio');
+  if (!debtEl) return;
+
+  const debt = Sim.nationalDebt;
+  const monthlyInterest = Math.round(debt * (Sim.interestRate / 100) / 12);
+  const ratio = ((debt / Math.max(1, Sim.gdp)) * 100).toFixed(1);
+
+  debtEl.textContent = `₦${debt.toLocaleString()}`;
+  interestEl.textContent = `₦${monthlyInterest.toLocaleString()}`;
+  ratioEl.textContent = `${ratio}%`;
+  ratioEl.style.color = parseFloat(ratio) > 60 ? '#ff4560' : parseFloat(ratio) > 30 ? '#ffb030' : '#00e676';
+}
+
+window.issueBond = function() {
+  initAudio();
+  const sel = document.getElementById('bond-amount-select');
+  if (!sel) return;
+  const amount = parseInt(sel.value);
+  const premiumMap = { 100000000000: 1, 500000000000: 1.5, 1000000000000: 2 };
+  const premium = premiumMap[amount] || 1;
+  const effectiveRate = Sim.interestRate + premium;
+
+  if (Sim.nationalDebt > Sim.gdp * 0.8) {
+    showNotice('⛔ 국가 부채가 GDP의 80%를 초과해 신용 등급 하락으로 국채 발행이 불가합니다!');
+    return;
+  }
+
+  Sim.treasury += amount;
+  Sim.nationalDebt += amount;
+  playCoin();
+  showNotice(`📈 국채 ₦${(amount/100000000).toFixed(0)}억 발행 완료. 이자율 ${effectiveRate.toFixed(1)}%`);
+  addEventLog('🏦 국채 발행', `₦${(amount/100000000).toFixed(0)}억 발행. 이자율 ${effectiveRate.toFixed(1)}%`);
+  addNews(`🏦 정부, 국채 ₦${(amount/100000000).toFixed(0)}억 발행 — 국고 확충`);
+  updateBondUI();
+  updateDashboardData();
+};
+
+window.repayBond = function() {
+  initAudio();
+  if (Sim.nationalDebt <= 0) { showNotice('✅ 상환할 국채가 없습니다!'); return; }
+  const repayAmt = Math.round(Sim.treasury * 0.1);
+  if (repayAmt <= 0 || Sim.treasury < repayAmt) { showNotice('⚠️ 국고가 부족합니다!'); return; }
+  Sim.treasury -= repayAmt;
+  Sim.nationalDebt = Math.max(0, Sim.nationalDebt - repayAmt);
+  playCoin();
+  showNotice(`💸 국채 ₦${repayAmt.toLocaleString()} 상환 완료`);
+  addEventLog('💸 국채 상환', `₦${repayAmt.toLocaleString()} 상환`);
+  updateBondUI();
+  updateDashboardData();
+};
+
+// 매 틱 국채 이자 국고에서 자동 차감 (Sim.tick 종료 후 호출)
+const _origTick = Sim.tick.bind(Sim);
+Sim.tick = function() {
+  _origTick();
+  // 국채 월 이자 차감
+  if (this.nationalDebt > 0) {
+    const interest = Math.round(this.nationalDebt * (this.interestRate / 100) / 12);
+    this.treasury = Math.max(0, this.treasury - interest);
+    if (interest > 0 && this.tickCount % 5 === 0) {
+      if (window.addNews) addNews(`💸 국채 이자 ₦${interest.toLocaleString()} 자동 차감`);
+    }
+  }
+  updateBondUI();
+  updatePlayerJobDayTick();
+};
+
+let _lastJobDay = 0;
+function updatePlayerJobDayTick() {
+  if (dayN !== _lastJobDay) {
+    _lastJobDay = dayN;
+    if (playerJob.current) {
+      playerJob.tenureDays++;
+      tickPlayerJob();
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//   🚨 재난 이벤트 시스템
+// ══════════════════════════════════════════════════════
+
+const DISASTERS = [
+  {
+    id: 'dis_quake',
+    icon: '🏚️',
+    title: '대지진 발생!',
+    desc: '리히터 7.2 규모의 강진이 네오폴리스 남부를 강타했습니다. 다수의 건물이 붕괴하고 시민 사상자가 발생했습니다.',
+    impact: '국민 건강 -15 · 행복도 -12 · GDP -5% · 지지율 -8',
+    apply: () => {
+      Sim.popHealth = Math.max(10, Sim.popHealth - 15);
+      Sim.popHappiness = Math.max(5, Sim.popHappiness - 12);
+      Sim.gdp = Math.round(Sim.gdp * 0.95);
+      Sim.approvalRating = Math.max(5, Sim.approvalRating - 8);
+    },
+    options: [
+      {
+        label: '🚁 긴급 구조대 파견 (₦3억 지출)',
+        cost: 300000000,
+        effect() {
+          Sim.treasury -= 300000000;
+          Sim.popHealth = Math.min(100, Sim.popHealth + 8);
+          Sim.popHappiness = Math.min(100, Sim.popHappiness + 6);
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 10);
+          showNotice('🚁 구조대 파견 완료. 국민 신뢰 회복!');
+          addEventLog('🏚️ 지진 대응', '긴급 구조대 파견 — ₦3억 집행, 지지율 +10');
+        }
+      },
+      {
+        label: '🏥 의료 지원에만 집중 (₦1억 지출)',
+        cost: 100000000,
+        effect() {
+          Sim.treasury -= 100000000;
+          Sim.popHealth = Math.min(100, Sim.popHealth + 12);
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 3);
+          showNotice('🏥 의료 지원 집중. 건강 회복!');
+          addEventLog('🏚️ 지진 대응', '의료 지원 집중 — ₦1억 집행');
+        }
+      },
+      {
+        label: '📢 국민 자력 대피 권고 (예산 없음)',
+        cost: 0,
+        effect() {
+          Sim.popHappiness = Math.max(0, Sim.popHappiness - 5);
+          Sim.approvalRating = Math.max(5, Sim.approvalRating - 12);
+          showNotice('📢 국민 불만 폭증... 지지율 급락!');
+          addEventLog('🏚️ 지진 대응', '자력 대피 권고 — 지지율 -12');
+        }
+      }
+    ]
+  },
+  {
+    id: 'dis_epidemic',
+    icon: '🦠',
+    title: '바이러스 대유행!',
+    desc: '신종 바이러스 "네오-X"가 네오폴리스 전역으로 빠르게 확산되고 있습니다. WHO가 긴급 공중보건 위기를 선언했습니다.',
+    impact: '국민 건강 -20 · 행복도 -10 · 실업률 +2% · 지지율 -5',
+    apply: () => {
+      Sim.popHealth = Math.max(10, Sim.popHealth - 20);
+      Sim.popHappiness = Math.max(5, Sim.popHappiness - 10);
+      Sim.unemploymentRate = Math.min(30, Sim.unemploymentRate + 2);
+      Sim.approvalRating = Math.max(5, Sim.approvalRating - 5);
+    },
+    options: [
+      {
+        label: '💉 대규모 백신 프로그램 (₦5억 지출)',
+        cost: 500000000,
+        effect() {
+          Sim.treasury -= 500000000;
+          Sim.popHealth = Math.min(100, Sim.popHealth + 20);
+          Sim.popHappiness = Math.min(100, Sim.popHappiness + 8);
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 15);
+          showNotice('💉 백신 프로그램 성공! 전염병 종식.');
+          addEventLog('🦠 전염병 대응', '대규모 백신 프로그램 — ₦5억 집행, 지지율 +15');
+        }
+      },
+      {
+        label: '🔒 부분 봉쇄령 발동 (₦2억 지출)',
+        cost: 200000000,
+        effect() {
+          Sim.treasury -= 200000000;
+          Sim.popHealth = Math.min(100, Sim.popHealth + 10);
+          Sim.gdp = Math.round(Sim.gdp * 0.97);
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 5);
+          showNotice('🔒 봉쇄령으로 전파 속도 감소. 경제 위축.');
+          addEventLog('🦠 전염병 대응', '부분 봉쇄령 — ₦2억 집행, GDP -3%');
+        }
+      },
+      {
+        label: '🙅 집단면역 자연 전략 (예산 없음)',
+        cost: 0,
+        effect() {
+          Sim.popHealth = Math.max(0, Sim.popHealth - 10);
+          Sim.approvalRating = Math.max(5, Sim.approvalRating - 20);
+          showNotice('🙅 집단면역 실패... 국민 사망자 급증!');
+          addEventLog('🦠 전염병 대응', '집단면역 전략 — 지지율 -20, 건강 -10');
+        }
+      }
+    ]
+  },
+  {
+    id: 'dis_fire',
+    icon: '🔥',
+    title: '테크노밸리 대화재!',
+    desc: '테크노 밸리 IT 산업단지에서 대형 화재가 발생했습니다. 수십 개의 기업과 데이터 센터가 피해를 입고 있습니다.',
+    impact: '기술지수 -20 · GDP -3% · 실업률 +1.5% · 지지율 -6',
+    apply: () => {
+      Sim.techLevel = Math.max(0, Sim.techLevel - 20);
+      Sim.gdp = Math.round(Sim.gdp * 0.97);
+      Sim.unemploymentRate = Math.min(30, Sim.unemploymentRate + 1.5);
+      Sim.approvalRating = Math.max(5, Sim.approvalRating - 6);
+    },
+    options: [
+      {
+        label: '🚒 소방 특수대 + 드론 진압 (₦2억 지출)',
+        cost: 200000000,
+        effect() {
+          Sim.treasury -= 200000000;
+          Sim.techLevel += 10;
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 12);
+          showNotice('🚒 드론 진압 성공! 피해 최소화.');
+          addEventLog('🔥 화재 대응', '소방 특수대 파견 — ₦2억 집행, 지지율 +12');
+        }
+      },
+      {
+        label: '🏗️ 긴급 재건 예산 편성 (₦4억 지출)',
+        cost: 400000000,
+        effect() {
+          Sim.treasury -= 400000000;
+          Sim.techLevel += 25;
+          Sim.gdp = Math.round(Sim.gdp * 1.03);
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 8);
+          showNotice('🏗️ 재건 예산 집행! 기술지수 회복.');
+          addEventLog('🔥 화재 대응', '긴급 재건 — ₦4억 집행, 기술지수 +25');
+        }
+      },
+      {
+        label: '📋 보험 처리 위임 (예산 없음)',
+        cost: 0,
+        effect() {
+          Sim.approvalRating = Math.max(5, Sim.approvalRating - 8);
+          showNotice('📋 기업들의 불만 폭주! 지지율 하락.');
+          addEventLog('🔥 화재 대응', '보험 처리 위임 — 지지율 -8');
+        }
+      }
+    ]
+  },
+  {
+    id: 'dis_financial',
+    icon: '📉',
+    title: '금융 시장 대폭락!',
+    desc: '외부 충격으로 NPX 주가지수가 단 하루 만에 28% 폭락했습니다. 가계 자산 손실과 기업 연쇄 부도 우려가 커지고 있습니다.',
+    impact: '주가 -30% · GDP -6% · 지지율 -10 · 국민 행복 -8',
+    apply: () => {
+      Sim.stocks.forEach(s => { s.price = Math.round(s.price * 0.7); });
+      Sim.gdp = Math.round(Sim.gdp * 0.94);
+      Sim.approvalRating = Math.max(5, Sim.approvalRating - 10);
+      Sim.popHappiness = Math.max(5, Sim.popHappiness - 8);
+    },
+    options: [
+      {
+        label: '🏦 시장 안정화 기금 투입 (₦10억 지출)',
+        cost: 1000000000,
+        effect() {
+          if (Sim.treasury < 1000000000) { showNotice('⚠️ 국고 부족!'); return; }
+          Sim.treasury -= 1000000000;
+          Sim.stocks.forEach(s => { s.price = Math.round(s.price * 1.25); });
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 15);
+          showNotice('🏦 시장 안정 기금 투입! 주가 반등.');
+          addEventLog('📉 금융위기 대응', '시장 안정 기금 ₦10억 투입, 주가 반등');
+        }
+      },
+      {
+        label: '📉 기준금리 긴급 인하 (금리 -1%)',
+        cost: 0,
+        effect() {
+          Sim.interestRate = Math.max(0.1, Sim.interestRate - 1);
+          Sim.stocks.forEach(s => { s.price = Math.round(s.price * 1.12); });
+          Sim.inflation += 0.8;
+          Sim.approvalRating = Math.min(95, Sim.approvalRating + 8);
+          showNotice('📉 금리 인하 단행! 증시 소폭 반등. 인플레 압력 ↑');
+          addEventLog('📉 금융위기 대응', '기준금리 긴급 인하, 주가 소폭 반등');
+        }
+      },
+      {
+        label: '🚫 시장 자율 조정 방치',
+        cost: 0,
+        effect() {
+          Sim.gdp = Math.round(Sim.gdp * 0.97);
+          Sim.approvalRating = Math.max(5, Sim.approvalRating - 15);
+          showNotice('🚫 방치 결정... 주가 추가 폭락, 지지율 급락!');
+          addEventLog('📉 금융위기 대응', '방치 — GDP 추가 하락, 지지율 -15');
+        }
+      }
+    ]
+  }
+];
+
+let _lastDisasterTick = -1;
+let _pendingDisaster = null;
+const _disasterCooldowns = {};
+
+const _disasterQueue = []; // 대기 중인 재난들
+
+function checkDisasterEvent() {
+  if (Sim.tickCount === _lastDisasterTick) return;
+  _lastDisasterTick = Sim.tickCount;
+  if (Math.random() > 0.12) return; // 틱당 12% 확률
+
+  const available = DISASTERS.filter(d => {
+    const lastFired = _disasterCooldowns[d.id] || -999;
+    return Sim.tickCount - lastFired > 20;
+  });
+  if (available.length === 0) return;
+
+  const dis = available[Math.floor(Math.random() * available.length)];
+  _disasterCooldowns[dis.id] = Sim.tickCount;
+
+  // 재난 효과 즉시 적용
+  dis.apply();
+  addNews(`🚨 긴급: ${dis.title} 대통령 긴급 대응 요청!`);
+  addEventLog(`🚨 ${dis.title}`, dis.desc.substring(0, 50) + '...');
+
+  // 즉시 팝업 대신 HUD 배너로 알리고 큐에 추가
+  _disasterQueue.push(dis);
+  showDisasterBanner(dis);
+}
+
+function showDisasterBanner(dis) {
+  // 기존 배너 제거
+  const old = document.getElementById('disaster-banner');
+  if (old) old.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'disaster-banner';
+  banner.style.cssText = `
+    position:fixed; top:70px; left:50%; transform:translateX(-50%);
+    background:linear-gradient(135deg,rgba(255,20,50,0.15),rgba(0,0,0,0.85));
+    border:1px solid rgba(255,69,96,0.6);
+    border-radius:12px; padding:12px 20px; z-index:500;
+    display:flex; align-items:center; gap:14px;
+    font-size:13px; color:#fff;
+    box-shadow:0 0 30px rgba(255,69,96,0.35);
+    animation:disasterSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    pointer-events:auto;
+  `;
+  banner.innerHTML = `
+    <span style="font-size:26px;">${dis.icon}</span>
+    <div>
+      <div style="font-weight:700;color:#ff4560;font-size:14px;">${dis.title}</div>
+      <div style="color:rgba(255,255,255,0.65);font-size:11px;margin-top:2px;">ESC → 대통령 긴급 대응</div>
+    </div>
+    <div style="margin-left:auto;background:rgba(255,69,96,0.2);border:1px solid rgba(255,69,96,0.4);border-radius:6px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;"
+      onclick="document.exitPointerLock(); showNextDisasterModal();">지금 대응 ➔</div>
+  `;
+  document.body.appendChild(banner);
+
+  // 10초 후 자동 제거
+  setTimeout(() => { if (banner.parentNode) banner.remove(); }, 10000);
+}
+
+function showNextDisasterModal() {
+  if (_disasterQueue.length === 0) return;
+  _pendingDisaster = _disasterQueue.shift();
+  const banner = document.getElementById('disaster-banner');
+  if (banner) banner.remove();
+  openDisasterModal(_pendingDisaster);
+}
+
+function openDisasterModal(dis) {
+  const modal = document.getElementById('disaster-modal');
+  document.getElementById('disaster-icon').textContent = dis.icon;
+  document.getElementById('disaster-title').textContent = dis.title;
+  document.getElementById('disaster-desc').textContent = dis.desc;
+  document.getElementById('disaster-impact').innerHTML = `<span style="color:#ff4560;">⚠️ 즉각 발생한 피해:</span><br>${dis.impact}`;
+
+  const optBox = document.getElementById('disaster-options');
+  optBox.innerHTML = '';
+  dis.options.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'form-btn login-btn';
+    btn.style.cssText = 'width:100%;text-align:left;font-size:12px;padding:10px 14px;';
+    const costTxt = opt.cost > 0 ? ` — 비용 ₦${(opt.cost/100000000).toFixed(0)}억` : '';
+    btn.innerHTML = `${opt.label}<span style="color:var(--text-dim);">${costTxt}</span>`;
+    btn.onclick = () => {
+      if (opt.cost > 0 && Sim.treasury < opt.cost) {
+        showNotice('⚠️ 국고가 부족합니다!');
+        return;
+      }
+      initAudio();
+      playClick();
+      opt.effect();
+      _pendingDisaster = null;
+      modal.style.display = 'none';
+      updateDashboardData();
+      updateHUD();
+      // 모달 닫힌 후 자동으로 포인터 잠금 복귀
+      setTimeout(() => { if (!isDashboardOpen) c.requestPointerLock(); }, 200);
+    };
+    optBox.appendChild(btn);
+  });
+
+  modal.style.display = 'block';
+}
+
+// 재난 체크를 시뮬레이션 틱에 연결 (bond+job 래핑 위에 추가)
+const _simTickBase = Sim.tick;
+Sim.tick = function() {
+  _simTickBase.call(this);
+  checkDisasterEvent();
+};
+
+
+// ════════════════════════════════════════════════════════
+//   관리자 시스템 — ree1203 전용
+// ════════════════════════════════════════════════════════
+
+function isAdmin() { return currentUsername === ADMIN_ID; }
+
+function adminLog(msg, type) {
+  type = type || 'info';
+  if (!isAdmin()) return;
+  var ts = new Date().toLocaleTimeString('ko-KR');
+  adminState.logs.unshift({ ts: ts, msg: msg, type: type });
+  if (adminState.logs.length > 200) adminState.logs.pop();
+  renderAdminLogs();
+}
+
+function renderAdminLogs() {
+  var c = document.getElementById('admin-log-container');
+  if (!c) return;
+  if (adminState.logs.length === 0) {
+    c.innerHTML = '<div style="color:var(--text-dim);">로그 없음</div>';
+    return;
+  }
+  c.innerHTML = adminState.logs.map(function(l) {
+    return '<div class="admin-log-entry ' + l.type + '">[' + l.ts + '] ' + l.msg + '</div>';
+  }).join('');
+}
+
+function updateAdminModeStatus() {
+  var active = [];
+  if (adminState.godMode)      active.push('🛡️ 무적');
+  if (adminState.invisible)    active.push('👻 투명');
+  if (adminState.flyMode)      active.push('🦅 비행');
+  if (adminState.serverLocked) active.push('🔒 서버잠금');
+  var el = document.getElementById('admin-mode-status');
+  if (el) el.textContent = active.length ? active.join('  |  ') : '활성 모드 없음';
+  document.body.classList.toggle('admin-fly-active', adminState.flyMode);
+  document.body.classList.toggle('admin-god-active', adminState.godMode);
+}
+
+function initAdminPanel() {
+  var btn = document.getElementById('admin-toggle-btn');
+  if (btn) btn.style.display = 'block';
+  adminLog('관리자 세션 시작: ' + ADMIN_ID, 'ok');
+
+  fetch(DB_URL + 'admin/server_locked.json')
+    .then(function(r) { return r.json(); })
+    .then(function(v) {
+      if (v === true) {
+        adminState.serverLocked = true;
+        var cb = document.getElementById('toggle-serverlock');
+        if (cb) cb.checked = true;
+        updateAdminModeStatus();
+      }
+    }).catch(function() {});
+
+  adminLogInterval = setInterval(adminCheckNotice, 5000);
+  adminPlayerInterval = setInterval(adminRefreshPlayerList, 3000);
+  adminLog('관리자 기능 활성화 완료', 'ok');
+}
+
+function toggleAdminPanel() {
+  if (!isAdmin()) return;
+  adminPanelOpen = !adminPanelOpen;
+  var panel = document.getElementById('admin-panel');
+  if (panel) panel.style.display = adminPanelOpen ? 'flex' : 'none';
+  if (adminPanelOpen) {
+    adminRefreshPlayerList();
+    renderAdminLogs();
+    switchAdminTab('modes');
+  }
+}
+
+function switchAdminTab(tab) {
+  document.querySelectorAll('.admin-tab-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.admin-tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  var content = document.getElementById('admin-tab-' + tab);
+  if (content) content.classList.add('active');
+  var tabNames = ['modes', 'players', 'server', 'logs'];
+  var idx = tabNames.indexOf(tab);
+  var btns = document.querySelectorAll('.admin-tab-btn');
+  if (btns[idx]) btns[idx].classList.add('active');
+  if (tab === 'players') adminRefreshPlayerList();
+  if (tab === 'logs') renderAdminLogs();
+}
+
+function adminToggle(feature, val) {
+  if (!isAdmin()) return;
+  switch (feature) {
+    case 'godmode':
+      adminState.godMode = val;
+      adminLog('무적 모드 ' + (val ? '활성화' : '비활성화'), val ? 'ok' : 'info');
+      if (val) { P.health = 100; P.happy = 100; P.hunger = 100; P.energy = 100; updateHUD(); }
+      break;
+    case 'invisible':
+      adminState.invisible = val;
+      adminLog('투명 모드 ' + (val ? '활성화' : '비활성화'), val ? 'ok' : 'info');
+      if (!val) broadcastPlayerPosition();
+      break;
+    case 'fly':
+      adminState.flyMode = val;
+      adminState.flyY = val ? Math.max(P.h || 0, 2) : 0;
+      adminLog('자유 비행 ' + (val ? '활성화 (Q↓ E↑)' : '비활성화'), val ? 'ok' : 'info');
+      if (!val) { P.h = 0; P.vh = 0; }
+      break;
+    case 'serverlock':
+      adminState.serverLocked = val;
+      fetch(DB_URL + 'admin/server_locked.json', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(val)
+      }).then(function() {
+        adminLog('서버 잠금 ' + (val ? '설정' : '해제') + ' — 신규 로그인 ' + (val ? '차단' : '허용'), val ? 'warn' : 'ok');
+      }).catch(function() { adminLog('서버 잠금 Firebase 저장 실패', 'error'); });
+      break;
+    case 'autosanction':
+      adminState.autoSanction = val;
+      adminLog('자동 제재 ' + (val ? '활성화' : '비활성화'), val ? 'warn' : 'info');
+      break;
+  }
+  updateAdminModeStatus();
+}
+
+function adminTeleport() {
+  if (!isAdmin()) return;
+  var x = parseFloat(document.getElementById('admin-tp-x').value);
+  var y = parseFloat(document.getElementById('admin-tp-y').value);
+  if (isNaN(x) || isNaN(y)) { showNotice('❌ 올바른 좌표를 입력하세요.'); return; }
+  var cx = Math.max(0.5, Math.min(MW - 0.5, x));
+  var cy = Math.max(0.5, Math.min(MH - 0.5, y));
+  P.x = cx; P.y = cy;
+  if (playerGroup) playerGroup.position.set(P.x, P.h || 0, P.y);
+  adminLog('순간이동 → (' + cx.toFixed(1) + ', ' + cy.toFixed(1) + ')', 'ok');
+  showNotice('🌀 순간이동 완료: (' + cx.toFixed(1) + ', ' + cy.toFixed(1) + ')');
+}
+
+function adminTeleportToPlayer(uname) {
+  if (!isAdmin()) return;
+  var pl = otherPlayers[uname];
+  if (!pl) { showNotice('❌ 플레이어를 찾을 수 없습니다.'); return; }
+  P.x = pl.x + 1.5; P.y = pl.y + 1.5;
+  if (playerGroup) playerGroup.position.set(P.x, P.h || 0, P.y);
+  adminLog(uname + ' 위치로 순간이동 → (' + P.x.toFixed(1) + ', ' + P.y.toFixed(1) + ')', 'ok');
+  showNotice('🌀 ' + uname + ' 위치로 이동');
+}
+
+function adminRefreshPlayerList() {
+  if (!isAdmin()) return;
+  var container = document.getElementById('admin-player-list');
+  if (!container) return;
+  var players = Object.entries(otherPlayers);
+  if (players.length === 0) {
+    container.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px;">온라인 플레이어 없음</div>';
+    return;
+  }
+  container.innerHTML = players.map(function(entry) {
+    var uname = entry[0];
+    var info = entry[1];
+    var px = (info.x || 0).toFixed(1);
+    var py = (info.y || 0).toFixed(1);
+    return '<div class="admin-player-card">' +
+      '<div><div class="admin-player-name">👤 ' + uname + '</div>' +
+      '<div class="admin-player-pos">X:' + px + ' Y:' + py + '</div></div>' +
+      '<div class="admin-player-actions">' +
+      '<button class="admin-btn admin-btn-cyan" style="padding:3px 7px;font-size:10px;" onclick="adminTeleportToPlayer(\'' + uname + '\')">이동</button>' +
+      '<button class="admin-btn admin-btn-cyan" style="padding:3px 7px;font-size:10px;" onclick="adminStartSpectateTarget(\'' + uname + '\')">관전</button>' +
+      '</div></div>';
+  }).join('');
+
+  players.forEach(function(entry) {
+    var uname = entry[0];
+    var info = entry[1];
+    if (!adminState.playerPositions[uname]) adminState.playerPositions[uname] = [];
+    adminState.playerPositions[uname].push({ x: info.x, y: info.y, t: Date.now() });
+    if (adminState.playerPositions[uname].length > 20) adminState.playerPositions[uname].shift();
+  });
+}
+
+function adminStartSpectate() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-spectate-input').value.trim();
+  if (!uname) return;
+  adminStartSpectateTarget(uname);
+}
+
+function adminStartSpectateTarget(uname) {
+  if (!isAdmin()) return;
+  if (!otherPlayers[uname]) { showNotice('❌ ' + uname + ' 은(는) 오프라인입니다.'); return; }
+  adminState.spectateTarget = uname;
+  var el = document.getElementById('admin-spectate-status');
+  if (el) el.textContent = '📷 관전 중: ' + uname;
+  adminLog('관전 시작: ' + uname, 'info');
+  showNotice('👁️ ' + uname + ' 관전 시작');
+}
+
+function adminStopSpectate() {
+  if (!isAdmin()) return;
+  var prev = adminState.spectateTarget;
+  adminState.spectateTarget = null;
+  var el = document.getElementById('admin-spectate-status');
+  if (el) el.textContent = '관전 중 아님';
+  if (prev) { adminLog('관전 종료: ' + prev, 'info'); showNotice('👁️ 관전 종료'); }
+}
+
+async function adminSendNotice() {
+  if (!isAdmin()) return;
+  var msg = document.getElementById('admin-notice-input').value.trim();
+  if (!msg) { showNotice('❌ 공지 내용을 입력하세요.'); return; }
+  var payload = { msg: msg, from: ADMIN_ID, t: Date.now() };
+  try {
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    adminLog('전체 공지 전송: "' + msg + '"', 'ok');
+    showNotice('📢 [전체 공지] ' + msg);
+    document.getElementById('admin-notice-input').value = '';
+  } catch (e) {
+    adminLog('전체 공지 전송 실패: ' + e.message, 'error');
+  }
+}
+
+async function adminSendChat() {
+  if (!isAdmin()) return;
+  var msg = document.getElementById('admin-chat-input').value.trim();
+  if (!msg) return;
+  var payload = { msg: msg, from: '[관리자] ' + ADMIN_ID, t: Date.now() };
+  try {
+    await fetch(DB_URL + 'admin/global_chat.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    adminLog('채팅 전송: "' + msg + '"', 'ok');
+    showNotice('💬 [관리자] ' + msg);
+    document.getElementById('admin-chat-input').value = '';
+  } catch (e) {
+    adminLog('채팅 전송 실패', 'error');
+  }
+}
+
+var _lastNoticeT = 0;
+async function adminCheckNotice() {
+  try {
+    var res = await fetch(DB_URL + 'admin/global_notice.json');
+    if (res.ok) {
+      var data = await res.json();
+      if (data && data.t && data.t > _lastNoticeT) {
+        _lastNoticeT = data.t;
+        if (data.from !== currentUsername) showNotice('📢 [전체 공지] ' + data.msg);
+      }
+    }
+    var res2 = await fetch(DB_URL + 'admin/global_chat.json');
+    if (res2.ok) {
+      var chat = await res2.json();
+      if (chat && chat.t && chat.t > _lastNoticeT) {
+        _lastNoticeT = chat.t;
+        if (chat.from && chat.from.indexOf(currentUsername) === -1) showNotice('💬 ' + chat.from + ': ' + chat.msg);
+      }
+    }
+    if (currentUsername !== ADMIN_ID) {
+      var lockRes = await fetch(DB_URL + 'admin/server_locked.json');
+      if (lockRes.ok) {
+        var locked = await lockRes.json();
+        if (locked === true) showNotice('🔒 관리자가 서버를 잠금했습니다. 잠시 후 재접속해 주세요.');
+      }
+    }
+  } catch (e) {}
+}
+
+async function adminRestart() {
+  if (!isAdmin()) return;
+  if (!confirm('서버 관리 데이터(공지/채팅/잠금)를 초기화하시겠습니까?')) return;
+  try {
+    await fetch(DB_URL + 'admin.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ server_locked: false, global_notice: null, global_chat: null })
+    });
+    adminState.serverLocked = false;
+    var cb = document.getElementById('toggle-serverlock');
+    if (cb) cb.checked = false;
+    updateAdminModeStatus();
+    adminLog('서버 관리 데이터 초기화 완료', 'ok');
+    showNotice('🔄 서버 상태 초기화 완료');
+  } catch (e) {
+    adminLog('서버 초기화 실패: ' + e.message, 'error');
+  }
+}
+
+function adminRefreshLogs() { if (isAdmin()) renderAdminLogs(); }
+function adminClearLogs() {
+  if (!isAdmin()) return;
+  adminState.logs = [];
+  renderAdminLogs();
+  adminLog('로그 초기화됨', 'info');
+}
+
+function adminHackDetect() {
+  if (!isAdmin()) return;
+  adminLog('── 핵 탐지 스캔 시작 ──', 'info');
+  var found = 0;
+  var MAX_SPEED = 15;
+  Object.entries(adminState.playerPositions).forEach(function(entry) {
+    var uname = entry[0];
+    var positions = entry[1];
+    if (positions.length < 2) return;
+    for (var i = 1; i < positions.length; i++) {
+      var a = positions[i - 1];
+      var b = positions[i];
+      var dt = (b.t - a.t) / 1000;
+      if (dt <= 0) continue;
+      var dist = Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+      var speed = dist / dt;
+      if (speed > MAX_SPEED) {
+        found++;
+        adminLog('⚠️ 의심 플레이어: ' + uname + ' — 속도 ' + speed.toFixed(1) + ' 타일/초 (임계: ' + MAX_SPEED + ')', 'warn');
+        if (adminState.autoSanction) adminSanctionPlayer(uname, '속도핵 의심');
+      }
+    }
+  });
+  if (found === 0) {
+    adminLog('스캔 완료: 의심 활동 없음 ✅', 'ok');
+    showNotice('✅ 핵 탐지 완료 — 의심 플레이어 없음');
+  } else {
+    showNotice('⚠️ 핵 탐지: ' + found + '건 의심 활동 발견');
+  }
+}
+
+async function adminSanctionPlayer(uname, reason) {
+  if (!isAdmin()) return;
+  try {
+    var res = await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json');
+    var userData = await res.json();
+    if (!userData) { adminLog('제재 실패: ' + uname + ' 계정 없음', 'error'); return; }
+    userData.banned = true;
+    userData.banReason = reason;
+    userData.bannedAt = Date.now();
+    userData.bannedBy = ADMIN_ID;
+    await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    });
+    adminLog('제재 완료: ' + uname + ' — 사유: ' + reason, 'warn');
+    showNotice('🚫 ' + uname + ' 제재 처리됨');
+  } catch (e) {
+    adminLog('제재 실패 (' + uname + '): ' + e.message, 'error');
+  }
+}
+
+// 서버 잠금 체크 — 로그인 전처리
+(function patchLoginForAdmin() {
+  var loginBtn = document.getElementById('loginBtn');
+  if (!loginBtn) return;
+  loginBtn.addEventListener('click', async function(e) {
+    var uname = document.getElementById('username').value.trim();
+    if (uname === ADMIN_ID) return;
+    try {
+      var lockRes = await fetch(DB_URL + 'admin/server_locked.json');
+      if (lockRes.ok) {
+        var locked = await lockRes.json();
+        if (locked === true) {
+          e.stopImmediatePropagation();
+          var statusEl = document.getElementById('login-status');
+          if (statusEl) {
+            statusEl.textContent = '🔒 서버가 잠금 상태입니다. 나중에 다시 시도해 주세요.';
+            statusEl.className = 'status-msg error';
+          }
+        }
+      }
+    } catch (_) {}
+  }, true);
+})();
+
+
+
+// ════════════════════════════════════════════════════════
+//   관리자 통제 시스템 — 계엄령 / 병력 / 감옥 / CCTV
+// ════════════════════════════════════════════════════════
+
+// 통제 상태
+var controlState = {
+  martialLaw: false,
+  curfew: false,
+  emergency: false,
+  police: 0,
+  military: 0,
+  wantedList: [],
+  prisonList: [],
+};
+
+// ── 탭 이름 목록 업데이트 (control 추가) ──
+var _origSwitchAdminTab = switchAdminTab;
+switchAdminTab = function(tab) {
+  document.querySelectorAll('.admin-tab-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.admin-tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  var content = document.getElementById('admin-tab-' + tab);
+  if (content) content.classList.add('active');
+  var tabNames = ['modes', 'players', 'control', 'server', 'logs'];
+  var idx = tabNames.indexOf(tab);
+  var btns = document.querySelectorAll('.admin-tab-btn');
+  if (btns[idx]) btns[idx].classList.add('active');
+  if (tab === 'players') adminRefreshPlayerList();
+  if (tab === 'logs') renderAdminLogs();
+  if (tab === 'control') adminRefreshControlUI();
+};
+
+// ── 통제 UI 갱신 ──
+function adminRefreshControlUI() {
+  document.getElementById('toggle-martial-law').checked = controlState.martialLaw;
+  document.getElementById('toggle-curfew').checked = controlState.curfew;
+  document.getElementById('toggle-emergency').checked = controlState.emergency;
+  renderDeployStatus();
+  renderPrisonList();
+}
+
+function renderDeployStatus() {
+  var el = document.getElementById('admin-deploy-status');
+  if (!el) return;
+  var parts = [];
+  if (controlState.police > 0)   parts.push('🚔 경찰 ' + controlState.police + '부대');
+  if (controlState.military > 0) parts.push('🪖 군대 ' + controlState.military + '부대');
+  el.textContent = parts.length ? parts.join('  |  ') : '배치된 병력 없음';
+}
+
+function renderPrisonList() {
+  var el = document.getElementById('admin-prison-list');
+  if (!el) return;
+  if (controlState.prisonList.length === 0) { el.textContent = '수감자 없음'; return; }
+  el.innerHTML = controlState.prisonList.map(function(p) {
+    return '<span style="color:#ff4560;">🔒 ' + p + '</span>';
+  }).join(' &nbsp;|&nbsp; ');
+}
+
+// ── 국가 비상 선포 토글 ──
+async function adminControlToggle(feature, val) {
+  if (!isAdmin()) return;
+  controlState[feature] = val;
+
+  var labels = { martialLaw: '계엄령', curfew: '통행금지', emergency: '비상사태' };
+  var icons  = { martialLaw: '⚔️', curfew: '🌙', emergency: '🆘' };
+  var label = labels[feature] || feature;
+  var icon  = icons[feature]  || '🚨';
+
+  var noticeMsg = val
+    ? icon + ' [전국 ' + label + ' 선포] 관리자 명령에 의해 ' + label + '이 발동되었습니다.'
+    : icon + ' [' + label + ' 해제] ' + label + '이 해제되었습니다.';
+
+  // Firebase에 상태 저장
+  try {
+    await fetch(DB_URL + 'admin/control/' + feature + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: val, t: Date.now(), by: ADMIN_ID })
+    });
+    adminLog((val ? '선포' : '해제') + ': ' + label, val ? 'warn' : 'info');
+  } catch (e) {
+    adminLog(label + ' Firebase 저장 실패', 'error');
+  }
+
+  // 전체 공지 전송
+  try {
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: noticeMsg, from: ADMIN_ID, t: Date.now() })
+    });
+  } catch (e) {}
+
+  showNotice(noticeMsg);
+  adminUpdateControlStatus();
+}
+
+// ── 병력 배치 ──
+async function adminDeploy(type) {
+  if (!isAdmin()) return;
+  if (type === 'police')   controlState.police++;
+  if (type === 'military') controlState.military++;
+
+  var label = type === 'police' ? '🚔 경찰' : '🪖 군대';
+  var count = type === 'police' ? controlState.police : controlState.military;
+  var msg = label + ' ' + count + '부대가 배치되었습니다.';
+
+  try {
+    await fetch(DB_URL + 'admin/control/deploy.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ police: controlState.police, military: controlState.military, t: Date.now(), by: ADMIN_ID })
+    });
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: msg, from: ADMIN_ID, t: Date.now() })
+    });
+  } catch (e) {}
+
+  renderDeployStatus();
+  adminLog('배치: ' + label + ' (총 ' + count + '부대)', 'warn');
+  showNotice(msg);
+}
+
+async function adminRecallAll() {
+  if (!isAdmin()) return;
+  controlState.police = 0;
+  controlState.military = 0;
+
+  try {
+    await fetch(DB_URL + 'admin/control/deploy.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ police: 0, military: 0, t: Date.now(), by: ADMIN_ID })
+    });
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: '↩️ 전체 병력이 철수하였습니다.', from: ADMIN_ID, t: Date.now() })
+    });
+  } catch (e) {}
+
+  renderDeployStatus();
+  adminLog('전체 병력 철수 완료', 'info');
+  showNotice('↩️ 전체 병력 철수 완료');
+}
+
+// ── 수배 ──
+async function adminWanted() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-wanted-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+
+  var msg = '🔍 [수배령] ' + uname + ' 이(가) 전국 수배 대상으로 지정되었습니다.';
+  try {
+    await fetch(DB_URL + 'admin/control/wanted/' + encodeURIComponent(uname) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ t: Date.now(), by: ADMIN_ID })
+    });
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: msg, from: ADMIN_ID, t: Date.now() })
+    });
+  } catch (e) {}
+
+  if (!controlState.wantedList.includes(uname)) controlState.wantedList.push(uname);
+  document.getElementById('admin-wanted-input').value = '';
+  adminLog('수배 등록: ' + uname, 'warn');
+  showNotice(msg);
+}
+
+// ── 감옥 수감 / 석방 ──
+async function adminPrisonSend() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-prison-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+
+  try {
+    var res = await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json');
+    if (!res.ok) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+    var userData = await res.json();
+    if (!userData) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+
+    userData.imprisoned = true;
+    userData.imprisonedAt = Date.now();
+    userData.imprisonedBy = ADMIN_ID;
+    // 감옥 좌표로 강제 이동 (맵 외곽 안전 지점)
+    userData.x = 1.5;
+    userData.y = 1.5;
+
+    await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    });
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: '🔒 [수감] ' + uname + ' 이(가) 감옥에 수감되었습니다.', from: ADMIN_ID, t: Date.now() })
+    });
+  } catch (e) {
+    adminLog('수감 실패 (' + uname + '): ' + e.message, 'error');
+    return;
+  }
+
+  if (!controlState.prisonList.includes(uname)) controlState.prisonList.push(uname);
+  document.getElementById('admin-prison-input').value = '';
+  renderPrisonList();
+  adminLog('수감: ' + uname, 'warn');
+  showNotice('🔒 ' + uname + ' 수감 완료');
+}
+
+async function adminPrisonFree() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-prison-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+
+  try {
+    var res = await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json');
+    if (!res.ok) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+    var userData = await res.json();
+    if (!userData) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+
+    userData.imprisoned = false;
+    userData.releasedAt = Date.now();
+    userData.releasedBy = ADMIN_ID;
+    userData.x = 32.5;
+    userData.y = 32.5;
+
+    await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(userData)
+    });
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: '🔓 [석방] ' + uname + ' 이(가) 석방되었습니다.', from: ADMIN_ID, t: Date.now() })
+    });
+  } catch (e) {
+    adminLog('석방 실패 (' + uname + '): ' + e.message, 'error');
+    return;
+  }
+
+  var idx = controlState.prisonList.indexOf(uname);
+  if (idx !== -1) controlState.prisonList.splice(idx, 1);
+  document.getElementById('admin-prison-input').value = '';
+  renderPrisonList();
+  adminLog('석방: ' + uname, 'ok');
+  showNotice('🔓 ' + uname + ' 석방 완료');
+}
+
+// ── CCTV 확인 ──
+async function adminCCTV() {
+  if (!isAdmin()) return;
+  adminLog('── CCTV 전체 조회 시작 ──', 'info');
+  switchAdminTab('logs');
+
+  try {
+    var res = await fetch(DB_URL + 'online_players.json');
+    if (!res.ok) { adminLog('CCTV: Firebase 연결 실패', 'error'); return; }
+    var data = await res.json();
+    if (!data) { adminLog('CCTV: 현재 온라인 플레이어 없음', 'info'); return; }
+
+    var now = Date.now();
+    var entries = Object.entries(data);
+    adminLog('CCTV 조회 — 온라인 ' + entries.length + '명', 'info');
+    entries.forEach(function(entry) {
+      var uname = entry[0];
+      var info = entry[1];
+      var age = Math.round((now - (info.t || now)) / 1000);
+      var isSuspect = controlState.wantedList.includes(uname) || controlState.prisonList.includes(uname);
+      var flag = isSuspect ? ' ⚠️[수배/수감]' : '';
+      adminLog(
+        '📹 ' + uname + flag +
+        ' | 위치: (' + (info.x || 0).toFixed(1) + ', ' + (info.y || 0).toFixed(1) + ')' +
+        ' | ' + age + '초 전 갱신',
+        isSuspect ? 'warn' : 'info'
+      );
+    });
+    showNotice('📹 CCTV 조회 완료 — ' + entries.length + '명 확인');
+  } catch (e) {
+    adminLog('CCTV 조회 실패: ' + e.message, 'error');
+  }
+}
+
+// ── 긴급 방송 ──
+async function adminEmergencyBroadcast() {
+  if (!isAdmin()) return;
+  var msg = document.getElementById('admin-broadcast-input').value.trim();
+  if (!msg) { showNotice('❌ 방송 내용을 입력하세요.'); return; }
+
+  var fullMsg = '📻 [긴급 방송] ' + msg;
+  try {
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: fullMsg, from: ADMIN_ID, t: Date.now() })
+    });
+  } catch (e) {
+    adminLog('긴급 방송 전송 실패', 'error');
+    return;
+  }
+
+  document.getElementById('admin-broadcast-input').value = '';
+  adminLog('긴급 방송: "' + msg + '"', 'warn');
+  showNotice(fullMsg);
+}
+
+// ── 통제 상태 HUD 표시 갱신 (기존 updateAdminModeStatus 확장) ──
+function adminUpdateControlStatus() {
+  var active = [];
+  if (controlState.martialLaw) active.push('⚔️ 계엄령');
+  if (controlState.curfew)     active.push('🌙 통행금지');
+  if (controlState.emergency)  active.push('🆘 비상사태');
+  if (controlState.police > 0)   active.push('🚔 경찰' + controlState.police);
+  if (controlState.military > 0) active.push('🪖 군대' + controlState.military);
+
+  // 기존 모드 상태도 포함
+  if (adminState.godMode)    active.push('🛡️ 무적');
+  if (adminState.invisible)  active.push('👻 투명');
+  if (adminState.flyMode)    active.push('🦅 비행');
+
+  var el = document.getElementById('admin-mode-status');
+  if (el) el.textContent = active.length ? active.join('  |  ') : '활성 모드 없음';
+  document.body.classList.toggle('admin-fly-active', adminState.flyMode);
+  document.body.classList.toggle('admin-god-active', adminState.godMode || controlState.martialLaw || controlState.emergency);
+}
+
+// initAdminPanel에 통제 상태 Firebase 동기화 추가
+var _origInitAdminPanel = initAdminPanel;
+initAdminPanel = function() {
+  _origInitAdminPanel();
+  // 통제 상태 불러오기
+  fetch(DB_URL + 'admin/control.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data) return;
+      if (data.martialLaw && data.martialLaw.active) controlState.martialLaw = true;
+      if (data.curfew && data.curfew.active)         controlState.curfew     = true;
+      if (data.emergency && data.emergency.active)   controlState.emergency  = true;
+      if (data.deploy) {
+        controlState.police   = data.deploy.police   || 0;
+        controlState.military = data.deploy.military || 0;
+      }
+      // 수배 목록
+      if (data.wanted) {
+        controlState.wantedList = Object.keys(data.wanted);
+      }
+      adminLog('통제 상태 동기화 완료', 'ok');
+    }).catch(function() {});
+
+  // 수감자 목록 불러오기 (users에서 imprisoned:true 조회)
+  fetch(DB_URL + 'users.json')
+    .then(function(r) { return r.json(); })
+    .then(function(users) {
+      if (!users) return;
+      Object.entries(users).forEach(function(entry) {
+        if (entry[1] && entry[1].imprisoned) controlState.prisonList.push(entry[0]);
+      });
+      if (controlState.prisonList.length) adminLog('수감자 ' + controlState.prisonList.length + '명 확인', 'warn');
+    }).catch(function() {});
+};
+
+// 일반 플레이어 — 수감 상태 및 계엄령 체크 (로그인 후 폴링)
+var _controlPollInterval = null;
+var _origStartMultiplayer = startMultiplayer;
+startMultiplayer = function() {
+  _origStartMultiplayer();
+  if (_controlPollInterval) clearInterval(_controlPollInterval);
+  _controlPollInterval = setInterval(async function() {
+    try {
+      var res = await fetch(DB_URL + 'admin/control.json');
+      if (!res.ok) return;
+      var data = await res.json();
+      if (!data) return;
+
+      // 계엄령 / 비상사태 HUD 경고
+      if (data.martialLaw && data.martialLaw.active && currentUsername !== ADMIN_ID) {
+        var el = document.getElementById('dist-name');
+        if (el) el.style.color = '#ff4560';
+      }
+
+      // 수감 상태 — 강제 이동
+      if (currentUsername && currentUsername !== ADMIN_ID) {
+        var uRes = await fetch(DB_URL + 'users/' + encodeURIComponent(currentUsername) + '.json');
+        if (uRes.ok) {
+          var uData = await uRes.json();
+          if (uData && uData.imprisoned) {
+            P.x = 1.5; P.y = 1.5;
+            if (playerGroup) playerGroup.position.set(P.x, 0, P.y);
+            showNotice('🔒 당신은 현재 수감 중입니다.');
+          }
+        }
+      }
+    } catch (e) {}
+  }, 8000);
+};
+
+
+
+// ════════════════════════════════════════════════════════
+//   관리자 국민 관리 시스템
+// ════════════════════════════════════════════════════════
+
+// 탭 이름 목록에 citizens 추가 (switchAdminTab 재정의)
+var _origSwitchAdminTab2 = switchAdminTab;
+switchAdminTab = function(tab) {
+  document.querySelectorAll('.admin-tab-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.admin-tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  var content = document.getElementById('admin-tab-' + tab);
+  if (content) content.classList.add('active');
+  var tabNames = ['modes', 'players', 'citizens', 'control', 'server', 'logs'];
+  var idx = tabNames.indexOf(tab);
+  var btns = document.querySelectorAll('.admin-tab-btn');
+  if (btns[idx]) btns[idx].classList.add('active');
+  if (tab === 'players')  adminRefreshPlayerList();
+  if (tab === 'logs')     renderAdminLogs();
+  if (tab === 'control')  adminRefreshControlUI();
+  if (tab === 'citizens') adminCitizenSearch();
+};
+
+// ── 유저 데이터 로드 헬퍼 ──
+async function adminLoadUser(uname) {
+  var res = await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json');
+  if (!res.ok) return null;
+  var data = await res.json();
+  return data;
+}
+
+async function adminSaveUser(uname, data) {
+  await fetch(DB_URL + 'users/' + encodeURIComponent(uname) + '.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data)
+  });
+}
+
+// ── 검색창 대상 유저명 가져오기 ──
+function adminGetTargetUser() {
+  var val = document.getElementById('admin-citizen-search').value.trim();
+  if (!val) { showNotice('❌ 유저명을 먼저 검색하세요.'); return null; }
+  return val;
+}
+
+// ── 국민 검색 ──
+async function adminCitizenSearch() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-citizen-search').value.trim();
+  var el = document.getElementById('admin-citizen-result');
+  if (!uname) { if (el) el.textContent = '유저명을 검색하세요.'; return; }
+
+  if (el) el.textContent = '조회 중...';
+  try {
+    var data = await adminLoadUser(uname);
+    if (!data) {
+      if (el) el.innerHTML = '<span style="color:#ff4560;">존재하지 않는 유저입니다.</span>';
+      return;
+    }
+
+    var badges = [];
+    if (data.citizenship)  badges.push('<span style="color:#00e5ff;">🪪 시민권</span>');
+    if (data.vip)          badges.push('<span style="color:#ffb030;">⭐ VIP</span>');
+    if (data.blacklisted)  badges.push('<span style="color:#ff4560;">🖤 블랙리스트</span>');
+    if (data.blocked)      badges.push('<span style="color:#ff4560;">🔇 차단됨</span>');
+    if (data.deported)     badges.push('<span style="color:#ff4560;">🚫 추방됨</span>');
+    if (data.imprisoned)   badges.push('<span style="color:#ff4560;">🔒 수감 중</span>');
+    if (data.warnCount)    badges.push('<span style="color:#ffb030;">⚠️ 경고 ' + data.warnCount + '회</span>');
+
+    if (el) el.innerHTML =
+      '<strong style="color:#00e5ff;">' + uname + '</strong>' +
+      (badges.length ? '&nbsp;&nbsp;' + badges.join('&nbsp;') : '&nbsp;&nbsp;<span style="color:#00e676;">정상</span>') +
+      '<br><span style="color:var(--text-dim);font-size:10px;">💰 ' + (data.money || 0).toLocaleString() +
+      ' ₦&nbsp;|&nbsp;❤️ ' + (data.health || 0) +
+      '&nbsp;|&nbsp;📍 (' + (data.x || 0).toFixed(1) + ', ' + (data.y || 0).toFixed(1) + ')</span>';
+    adminLog('국민 조회: ' + uname, 'info');
+  } catch (e) {
+    if (el) el.innerHTML = '<span style="color:#ff4560;">조회 실패: ' + e.message + '</span>';
+  }
+}
+
+// ── 국민 추가 ──
+async function adminAddCitizen() {
+  if (!isAdmin()) return;
+  var uid = document.getElementById('admin-add-id').value.trim();
+  var pw  = document.getElementById('admin-add-pw').value.trim();
+  if (!uid || !pw) { showNotice('❌ 아이디와 비밀번호를 모두 입력하세요.'); return; }
+
+  var usernameRegex = /^[a-zA-Z0-9가-힣_]{2,15}$/;
+  if (!usernameRegex.test(uid)) { showNotice('❌ 아이디는 2~15자 한글/영문/숫자/_만 가능합니다.'); return; }
+
+  try {
+    var existing = await adminLoadUser(uid);
+    if (existing) { showNotice('❌ 이미 존재하는 아이디입니다: ' + uid); return; }
+
+    var newUser = {
+      password: pw, x: 32.5, y: 32.5, angle: -1.5708,
+      health: 100, happy: 75, hunger: 80, energy: 100, money: 500000,
+      knowledge: 0, diploma: '고등학교 졸업',
+      citizenship: false, vip: false, blacklisted: false, blocked: false,
+      createdBy: ADMIN_ID, createdAt: Date.now(),
+      portfolio: { NEO:0, LHM:0, HYH:0, HAN:0, SEC:0, HWA:0, PLI:0, LGU:0, COD:0, WOO:0, TEN:0 }
+    };
+    await adminSaveUser(uid, newUser);
+    document.getElementById('admin-add-id').value = '';
+    document.getElementById('admin-add-pw').value = '';
+    adminLog('국민 추가: ' + uid, 'ok');
+    showNotice('✅ 국민 추가 완료: ' + uid);
+  } catch (e) {
+    adminLog('국민 추가 실패: ' + e.message, 'error');
+  }
+}
+
+// ── 국민 상태 / 권한 액션 ──
+async function adminCitizenAction(action) {
+  if (!isAdmin()) return;
+  var uname = adminGetTargetUser();
+  if (!uname) return;
+
+  var actionMap = {
+    deport:          { field: 'deported',    val: true,  label: '추방',       icon: '🚫', color: 'warn' },
+    block:           { field: 'blocked',     val: true,  label: '차단',       icon: '🔇', color: 'warn' },
+    unblock:         { field: 'blocked',     val: false, label: '차단 해제',  icon: '✅', color: 'ok'   },
+    warn:            { field: 'warnInc',     val: true,  label: '경고',       icon: '⚠️', color: 'warn' },
+    citizen_grant:   { field: 'citizenship', val: true,  label: '시민권 지급',icon: '🪪', color: 'ok'   },
+    citizen_revoke:  { field: 'citizenship', val: false, label: '시민권 박탈',icon: '❌', color: 'warn' },
+    vip:             { field: 'vip',         val: true,  label: 'VIP 지정',   icon: '⭐', color: 'ok'   },
+    blacklist:       { field: 'blacklisted', val: true,  label: '블랙리스트', icon: '🖤', color: 'warn' },
+  };
+
+  var cfg = actionMap[action];
+  if (!cfg) return;
+
+  try {
+    var data = await adminLoadUser(uname);
+    if (!data) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+
+    if (cfg.field === 'warnInc') {
+      data.warnCount = (data.warnCount || 0) + 1;
+      data.lastWarnAt = Date.now();
+      data.lastWarnBy = ADMIN_ID;
+    } else {
+      data[cfg.field] = cfg.val;
+    }
+
+    // 추방 시 위치 초기화 + 잔고 몰수
+    if (action === 'deport') {
+      data.x = -999; data.y = -999;
+      data.money = 0;
+      data.deportedAt = Date.now();
+      data.deportedBy = ADMIN_ID;
+    }
+
+    await adminSaveUser(uname, data);
+
+    // 전체 공지
+    var noticeMsg = cfg.icon + ' [관리자] ' + uname + ' — ' + cfg.label + ' 처리되었습니다.';
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: noticeMsg, from: ADMIN_ID, t: Date.now() })
+    });
+
+    adminLog(cfg.label + ': ' + uname, cfg.color);
+    showNotice(cfg.icon + ' ' + uname + ' ' + cfg.label + ' 완료');
+    adminCitizenSearch(); // 결과 갱신
+  } catch (e) {
+    adminLog(cfg.label + ' 실패 (' + uname + '): ' + e.message, 'error');
+  }
+}
+
+// ── 온라인 국민 확인 ──
+async function adminOnlineCitizens() {
+  if (!isAdmin()) return;
+  var el = document.getElementById('admin-citizen-status');
+  if (el) el.textContent = '조회 중...';
+  try {
+    var res = await fetch(DB_URL + 'online_players.json');
+    if (!res.ok) throw new Error('연결 실패');
+    var data = await res.json();
+    if (!data || Object.keys(data).length === 0) {
+      if (el) el.textContent = '현재 온라인 국민 없음';
+      adminLog('온라인 국민 확인: 0명', 'info');
+      return;
+    }
+
+    var now = Date.now();
+    var lines = [];
+    Object.entries(data).forEach(function(entry) {
+      var uname = entry[0];
+      var info  = entry[1];
+      var age   = Math.round((now - (info.t || now)) / 1000);
+      if (age > 30) return; // 30초 초과는 오프라인 취급
+      lines.push('🟢 ' + uname + ' (' + (info.x||0).toFixed(1) + ', ' + (info.y||0).toFixed(1) + ') — ' + age + '초 전');
+    });
+
+    if (el) el.innerHTML = lines.length
+      ? lines.map(function(l) { return '<div>' + l + '</div>'; }).join('')
+      : '현재 온라인 국민 없음';
+
+    adminLog('온라인 국민 확인: ' + lines.length + '명', 'ok');
+    showNotice('🌐 온라인 국민: ' + lines.length + '명');
+  } catch (e) {
+    if (el) el.textContent = '조회 실패: ' + e.message;
+    adminLog('온라인 국민 조회 실패', 'error');
+  }
+}
+
+// ── 국민 활동 기록 보기 ──
+async function adminCitizenActivityLog() {
+  if (!isAdmin()) return;
+  var uname = adminGetTargetUser();
+  if (!uname) return;
+
+  switchAdminTab('logs');
+  adminLog('── ' + uname + ' 활동 기록 조회 ──', 'info');
+
+  try {
+    var data = await adminLoadUser(uname);
+    if (!data) { adminLog(uname + ': 존재하지 않는 유저', 'error'); return; }
+
+    // 기록 가능한 필드 출력
+    var fields = [
+      { key: 'createdAt',   label: '계정 생성',     fmt: function(v) { return new Date(v).toLocaleString('ko-KR'); } },
+      { key: 'createdBy',   label: '생성자',         fmt: function(v) { return v; } },
+      { key: 'lastWarnAt',  label: '마지막 경고',    fmt: function(v) { return new Date(v).toLocaleString('ko-KR'); } },
+      { key: 'warnCount',   label: '경고 횟수',      fmt: function(v) { return v + '회'; } },
+      { key: 'bannedAt',    label: '밴 일시',        fmt: function(v) { return new Date(v).toLocaleString('ko-KR'); } },
+      { key: 'banReason',   label: '밴 사유',        fmt: function(v) { return v; } },
+      { key: 'deportedAt',  label: '추방 일시',      fmt: function(v) { return new Date(v).toLocaleString('ko-KR'); } },
+      { key: 'imprisonedAt',label: '수감 일시',      fmt: function(v) { return new Date(v).toLocaleString('ko-KR'); } },
+      { key: 'releasedAt',  label: '석방 일시',      fmt: function(v) { return new Date(v).toLocaleString('ko-KR'); } },
+      { key: 'citizenship', label: '시민권',         fmt: function(v) { return v ? '있음' : '없음'; } },
+      { key: 'vip',         label: 'VIP',            fmt: function(v) { return v ? '지정됨' : '없음'; } },
+      { key: 'blacklisted', label: '블랙리스트',     fmt: function(v) { return v ? '등록됨' : '없음'; } },
+      { key: 'blocked',     label: '차단 상태',      fmt: function(v) { return v ? '차단 중' : '정상'; } },
+      { key: 'deported',    label: '추방 상태',      fmt: function(v) { return v ? '추방됨' : '정상'; } },
+      { key: 'imprisoned',  label: '수감 상태',      fmt: function(v) { return v ? '수감 중' : '정상'; } },
+      { key: 'money',       label: '잔고',           fmt: function(v) { return v.toLocaleString() + ' ₦'; } },
+      { key: 'health',      label: '건강',           fmt: function(v) { return v; } },
+      { key: 'x',           label: '마지막 위치 X',  fmt: function(v) { return v.toFixed(2); } },
+      { key: 'y',           label: '마지막 위치 Y',  fmt: function(v) { return v.toFixed(2); } },
+    ];
+
+    var found = false;
+    fields.forEach(function(f) {
+      if (data[f.key] !== undefined && data[f.key] !== null) {
+        var type = 'info';
+        if (f.key.indexOf('warn') !== -1 || f.key.indexOf('ban') !== -1 ||
+            f.key.indexOf('deport') !== -1 || f.key === 'blacklisted' ||
+            f.key === 'blocked' || f.key === 'imprisoned') type = 'warn';
+        if (f.key === 'citizenship' && data[f.key]) type = 'ok';
+        if (f.key === 'vip' && data[f.key]) type = 'ok';
+        adminLog('[' + uname + '] ' + f.label + ': ' + f.fmt(data[f.key]), type);
+        found = true;
+      }
+    });
+
+    if (!found) adminLog('[' + uname + '] 기록 없음', 'info');
+    showNotice('📋 ' + uname + ' 활동 기록 조회 완료');
+  } catch (e) {
+    adminLog('활동 기록 조회 실패: ' + e.message, 'error');
+  }
+}
+
+// 차단/추방된 플레이어 로그인 차단 (loginBtn 전처리 확장)
+(function patchLoginForCitizen() {
+  var loginBtn = document.getElementById('loginBtn');
+  if (!loginBtn) return;
+  loginBtn.addEventListener('click', async function(e) {
+    var uname = document.getElementById('username').value.trim();
+    if (uname === ADMIN_ID) return;
+    try {
+      var data = await adminLoadUser(uname);
+      if (!data) return;
+      if (data.blocked) {
+        e.stopImmediatePropagation();
+        var s = document.getElementById('login-status');
+        if (s) { s.textContent = '🔇 계정이 차단되었습니다. 관리자에게 문의하세요.'; s.className = 'status-msg error'; }
+      } else if (data.deported) {
+        e.stopImmediatePropagation();
+        var s2 = document.getElementById('login-status');
+        if (s2) { s2.textContent = '🚫 추방된 계정입니다. 재입국이 불가능합니다.'; s2.className = 'status-msg error'; }
+      }
+    } catch (_) {}
+  }, true);
+})();
+
+
+// ════════════════════════════════════════════════════════
+//   관리자 이벤트 시스템 — 보물찾기 / 불꽃축제 / 골드 이벤트
+// ════════════════════════════════════════════════════════
+
+// ── switchAdminTab 최종 정의 (모든 탭 포함) ──
+switchAdminTab = function(tab) {
+  document.querySelectorAll('.admin-tab-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.admin-tab-btn').forEach(function(el) { el.classList.remove('active'); });
+  var content = document.getElementById('admin-tab-' + tab);
+  if (content) content.classList.add('active');
+  document.querySelectorAll('.admin-tab-btn').forEach(function(btn) {
+    if (btn.getAttribute('onclick') === "switchAdminTab('" + tab + "')") btn.classList.add('active');
+  });
+  if (tab === 'players')  adminRefreshPlayerList();
+  if (tab === 'logs')     renderAdminLogs();
+  if (tab === 'control')  adminRefreshControlUI();
+  if (tab === 'citizens') adminCitizenSearch();
+};
+
+// ────────────────────────────────────────────────────────
+//  이벤트 상태
+// ────────────────────────────────────────────────────────
+var EVT = {
+  // 보물
+  treasure: {
+    mesh: null,
+    glowMesh: null,
+    active: false,
+    x: 0, y: 0,
+    reward: 50000,
+    id: '',
+  },
+  // 불꽃
+  fireworks: {
+    active: false,
+    until: 0,
+    type: 'rainbow',
+    rockets: [],    // { mesh, vx, vy, vz, life, exploded }
+    particles: [],  // { mesh, vx, vy, vz, life }
+    spawnTimer: 0,
+    rafId: null,
+    lastT: 0,
+  },
+  // 골드
+  gold: {
+    active: false,
+    until: 0,
+    amount: 5000,
+    coins: [],      // { mesh, vy, collected }
+    spawnTimer: 0,
+  },
+};
+
+var EVT_POLL = null; // Firebase 폴링 interval
+
+var FW_COLORS = {
+  rainbow: [0xff0000, 0xff7700, 0xffff00, 0x00ff44, 0x00c8ff, 0xaa44ff, 0xff00cc],
+  gold:    [0xffb030, 0xffd700, 0xffe88a, 0xffec8b],
+  blue:    [0x00c8ff, 0x0055ff, 0x00ffff, 0x88aaff],
+  red:     [0xff4560, 0xff0000, 0xff6666, 0xff2244],
+  sakura:  [0xffb7c5, 0xff88aa, 0xffc8d8, 0xff5599, 0xffffff],
+};
+
+// ────────────────────────────────────────────────────────
+//  보물 찾기
+// ────────────────────────────────────────────────────────
+function adminTreasurePlace() {
+  if (!isAdmin()) return;
+  var tx = parseFloat(document.getElementById('ev-treasure-x').value);
+  var ty = parseFloat(document.getElementById('ev-treasure-y').value);
+  var reward = parseInt(document.getElementById('ev-treasure-reward').value) || 50000;
+  if (isNaN(tx) || isNaN(ty)) {
+    // 좌표 미입력 시 현재 위치 + 랜덤 오프셋
+    tx = Math.round(P.x + (Math.random() * 20 - 10));
+    ty = Math.round(P.y + (Math.random() * 20 - 10));
+  }
+  tx = Math.max(1, Math.min(62, tx));
+  ty = Math.max(1, Math.min(62, ty));
+
+  var id = 'T' + Date.now();
+  EVT.treasure.x = tx; EVT.treasure.y = ty;
+  EVT.treasure.reward = reward; EVT.treasure.id = id;
+
+  // Firebase에 저장
+  fetch(DB_URL + 'admin/events/treasure.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x: tx, y: ty, reward: reward, id: id, active: true, by: ADMIN_ID, t: Date.now() })
+  }).catch(function() {});
+
+  _placeTreasureMesh(tx, ty);
+
+  var msg = '🏴‍☠️ [보물 찾기] 보물이 숨겨졌습니다! 지도 어딘가에서 찾아보세요! 보상: ₦' + reward.toLocaleString();
+  fetch(DB_URL + 'admin/global_notice.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msg: msg, from: ADMIN_ID, t: Date.now() })
+  }).catch(function() {});
+
+  document.getElementById('ev-treasure-status').textContent = '📍 (' + tx + ', ' + ty + ') — ₦' + reward.toLocaleString();
+  adminLog('보물 숨김: (' + tx + ', ' + ty + ') 보상 ₦' + reward.toLocaleString(), 'ok');
+  showNotice(msg);
+}
+
+function _placeTreasureMesh(tx, ty) {
+  _removeTreasureMesh();
+  if (typeof scene === 'undefined') return;
+
+  // 빛나는 구 (보물 본체)
+  var geo  = new THREE.SphereGeometry(0.35, 12, 12);
+  var mat  = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+  var mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(tx + 0.5, 0.5, ty + 0.5);
+  scene.add(mesh);
+  EVT.treasure.mesh = mesh;
+
+  // 글로우 후광
+  var geo2  = new THREE.SphereGeometry(0.55, 12, 12);
+  var mat2  = new THREE.MeshBasicMaterial({ color: 0xffec8b, transparent: true, opacity: 0.35, depthWrite: false });
+  var glow  = new THREE.Mesh(geo2, mat2);
+  glow.position.copy(mesh.position);
+  scene.add(glow);
+  EVT.treasure.glowMesh = glow;
+
+  EVT.treasure.active = true;
+}
+
+function _removeTreasureMesh() {
+  if (EVT.treasure.mesh && typeof scene !== 'undefined') {
+    scene.remove(EVT.treasure.mesh);
+    EVT.treasure.mesh = null;
+  }
+  if (EVT.treasure.glowMesh && typeof scene !== 'undefined') {
+    scene.remove(EVT.treasure.glowMesh);
+    EVT.treasure.glowMesh = null;
+  }
+}
+
+function adminTreasureRemove() {
+  if (!isAdmin()) return;
+  _removeTreasureMesh();
+  EVT.treasure.active = false;
+  fetch(DB_URL + 'admin/events/treasure.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: false })
+  }).catch(function() {});
+  document.getElementById('ev-treasure-status').textContent = '보물 없음';
+  adminLog('보물 회수', 'info');
+  showNotice('🏴‍☠️ 보물이 회수되었습니다.');
+}
+
+// 보물 근접 감지 (플레이어용)
+function _checkTreasureProximity() {
+  if (!EVT.treasure.active || !EVT.treasure.mesh) return;
+  var dx = P.x - EVT.treasure.x - 0.5;
+  var dz = P.y - EVT.treasure.y - 0.5;
+  if (Math.sqrt(dx*dx + dz*dz) < 1.8) {
+    var reward = EVT.treasure.reward;
+    P.money += reward;
+    updateHUD();
+    _removeTreasureMesh();
+    EVT.treasure.active = false;
+
+    // Firebase에서 제거
+    fetch(DB_URL + 'admin/events/treasure.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: false })
+    }).catch(function() {});
+
+    // 발견 공지
+    var msg = '🏴‍☠️ [보물 발견!] ' + (currentUsername || '게스트') + ' 님이 보물을 찾았습니다! (₦' + reward.toLocaleString() + ')';
+    fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: msg, from: 'SYSTEM', t: Date.now() })
+    }).catch(function() {});
+
+    showNotice('🏆 보물 발견! ₦' + reward.toLocaleString() + ' 획득!');
+    if (isAdmin()) {
+      document.getElementById('ev-treasure-status').textContent = '발견됨 — ' + (currentUsername || '게스트');
+      adminLog('보물 발견됨: ' + (currentUsername || '게스트'), 'ok');
+    }
+  }
+}
+
+// 보물 애니메이션 (글로우 펄스)
+function _animateTreasure(ts) {
+  if (!EVT.treasure.mesh) return;
+  EVT.treasure.mesh.position.y = 0.5 + Math.sin(ts * 0.002) * 0.12;
+  EVT.treasure.mesh.rotation.y = ts * 0.001;
+  if (EVT.treasure.glowMesh) {
+    EVT.treasure.glowMesh.position.y = EVT.treasure.mesh.position.y;
+    EVT.treasure.glowMesh.material.opacity = 0.2 + Math.sin(ts * 0.003) * 0.15;
+  }
+}
+
+// ────────────────────────────────────────────────────────
+//  불꽃 축제
+// ────────────────────────────────────────────────────────
+function adminFireworksStart() {
+  if (!isAdmin()) return;
+  var type = document.getElementById('ev-fw-type').value;
+  var dur  = parseInt(document.getElementById('ev-fw-duration').value) || 30;
+  var until = Date.now() + dur * 1000;
+
+  EVT.fireworks.type  = type;
+  EVT.fireworks.until = until;
+  EVT.fireworks.active = true;
+
+  fetch(DB_URL + 'admin/events/fireworks.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: true, type: type, until: until, by: ADMIN_ID })
+  }).catch(function() {});
+
+  var label = { rainbow:'🌈 무지개', gold:'🥇 황금', blue:'💙 파란', red:'❤️ 빨간', sakura:'🌸 벚꽃' }[type] || type;
+  var msg = '🎆 [불꽃 축제] ' + label + ' 불꽃이 ' + dur + '초간 하늘을 물들입니다!';
+  fetch(DB_URL + 'admin/global_notice.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msg: msg, from: ADMIN_ID, t: Date.now() })
+  }).catch(function() {});
+
+  document.getElementById('ev-fw-status').textContent = label + ' — ' + dur + '초';
+  adminLog('불꽃 축제 시작: ' + label + ' / ' + dur + '초', 'ok');
+  showNotice(msg);
+  _startFireworksLoop();
+}
+
+function adminFireworksStop() {
+  if (!isAdmin()) return;
+  EVT.fireworks.active = false;
+  EVT.fireworks.until  = 0;
+  _cleanFireworks();
+  fetch(DB_URL + 'admin/events/fireworks.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: false })
+  }).catch(function() {});
+  document.getElementById('ev-fw-status').textContent = '불꽃 없음';
+  adminLog('불꽃 축제 중지', 'info');
+  showNotice('🎆 불꽃 축제가 종료되었습니다.');
+}
+
+function _cleanFireworks() {
+  if (typeof scene === 'undefined') return;
+  EVT.fireworks.rockets.forEach(function(r) { scene.remove(r.mesh); r.mesh.geometry.dispose(); });
+  EVT.fireworks.particles.forEach(function(p) { scene.remove(p.mesh); p.mesh.geometry.dispose(); });
+  EVT.fireworks.rockets = [];
+  EVT.fireworks.particles = [];
+}
+
+function _spawnRocket() {
+  if (typeof scene === 'undefined') return;
+  var palette = FW_COLORS[EVT.fireworks.type] || FW_COLORS.rainbow;
+  var color = palette[Math.floor(Math.random() * palette.length)];
+  var geo = new THREE.SphereGeometry(0.08, 5, 5);
+  var mat = new THREE.MeshBasicMaterial({ color: color });
+  var mesh = new THREE.Mesh(geo, mat);
+
+  var rx = P.x + (Math.random() * 24 - 12);
+  var rz = P.y + (Math.random() * 24 - 12);
+  mesh.position.set(rx, 0.5, rz);
+  scene.add(mesh);
+
+  EVT.fireworks.rockets.push({
+    mesh: mesh,
+    color: color,
+    palette: palette,
+    vy: 6 + Math.random() * 4,
+    vx: (Math.random() - 0.5) * 0.5,
+    vz: (Math.random() - 0.5) * 0.5,
+    life: 1.0,
+    exploded: false,
+  });
+}
+
+function _explodeRocket(rocket) {
+  if (typeof scene === 'undefined') return;
+  scene.remove(rocket.mesh);
+  var ex = rocket.mesh.position.x;
+  var ey = rocket.mesh.position.y;
+  var ez = rocket.mesh.position.z;
+  var count = 28 + Math.floor(Math.random() * 18);
+  for (var i = 0; i < count; i++) {
+    var c = rocket.palette[Math.floor(Math.random() * rocket.palette.length)];
+    var geo = new THREE.SphereGeometry(0.055, 4, 4);
+    var mat = new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 1.0 });
+    var mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(ex, ey, ez);
+    var theta = Math.random() * Math.PI * 2;
+    var phi   = Math.random() * Math.PI;
+    var spd   = 1.5 + Math.random() * 2.5;
+    scene.add(mesh);
+    EVT.fireworks.particles.push({
+      mesh: mesh,
+      vx: Math.sin(phi) * Math.cos(theta) * spd,
+      vy: Math.cos(phi) * spd * 0.6 + 0.4,
+      vz: Math.sin(phi) * Math.sin(theta) * spd,
+      life: 1.0,
+    });
+  }
+}
+
+function _startFireworksLoop() {
+  if (EVT.fireworks.rafId) cancelAnimationFrame(EVT.fireworks.rafId);
+  EVT.fireworks.lastT = performance.now();
+
+  function loop(now) {
+    var dt = Math.min((now - EVT.fireworks.lastT) / 1000, 0.05);
+    EVT.fireworks.lastT = now;
+
+    if (!EVT.fireworks.active || Date.now() > EVT.fireworks.until) {
+      if (isAdmin()) {
+        adminFireworksStop();
+      } else {
+        EVT.fireworks.active = false;
+        _cleanFireworks();
+      }
+      return;
+    }
+
+    // 로켓 스폰
+    EVT.fireworks.spawnTimer -= dt;
+    if (EVT.fireworks.spawnTimer <= 0) {
+      _spawnRocket();
+      EVT.fireworks.spawnTimer = 0.35 + Math.random() * 0.45;
+    }
+
+    // 로켓 업데이트
+    for (var i = EVT.fireworks.rockets.length - 1; i >= 0; i--) {
+      var r = EVT.fireworks.rockets[i];
+      r.mesh.position.x += r.vx * dt;
+      r.mesh.position.y += r.vy * dt;
+      r.mesh.position.z += r.vz * dt;
+      r.vy -= 1.5 * dt;
+      r.life -= dt * 0.9;
+      if (r.vy <= 0 || r.life <= 0) {
+        _explodeRocket(r);
+        EVT.fireworks.rockets.splice(i, 1);
+      }
+    }
+
+    // 파티클 업데이트
+    for (var j = EVT.fireworks.particles.length - 1; j >= 0; j--) {
+      var p = EVT.fireworks.particles[j];
+      p.mesh.position.x += p.vx * dt;
+      p.mesh.position.y += p.vy * dt;
+      p.mesh.position.z += p.vz * dt;
+      p.vy -= 3.5 * dt;
+      p.life -= dt * 0.75;
+      p.mesh.material.opacity = Math.max(0, p.life);
+      if (p.life <= 0) {
+        if (scene) scene.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        EVT.fireworks.particles.splice(j, 1);
+      }
+    }
+
+    EVT.fireworks.rafId = requestAnimationFrame(loop);
+  }
+  EVT.fireworks.rafId = requestAnimationFrame(loop);
+}
+
+// ────────────────────────────────────────────────────────
+//  골드 이벤트
+// ────────────────────────────────────────────────────────
+function adminGoldStart() {
+  if (!isAdmin()) return;
+  var amount = parseInt(document.getElementById('ev-gold-amount').value) || 5000;
+  var dur    = parseInt(document.getElementById('ev-gold-duration').value) || 20;
+  var until  = Date.now() + dur * 1000;
+
+  EVT.gold.amount = amount;
+  EVT.gold.until  = until;
+  EVT.gold.active = true;
+
+  fetch(DB_URL + 'admin/events/gold.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: true, amount: amount, until: until, by: ADMIN_ID })
+  }).catch(function() {});
+
+  var msg = '💰 [골드 이벤트] ' + dur + '초간 하늘에서 골드(₦' + amount.toLocaleString() + ')가 쏟아집니다!';
+  fetch(DB_URL + 'admin/global_notice.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msg: msg, from: ADMIN_ID, t: Date.now() })
+  }).catch(function() {});
+
+  document.getElementById('ev-gold-status').textContent = '₦' + amount.toLocaleString() + '/개 — ' + dur + '초';
+  adminLog('골드 이벤트 시작: ₦' + amount.toLocaleString() + ' / ' + dur + '초', 'ok');
+  showNotice(msg);
+  _startGoldLoop();
+}
+
+function adminGoldStop() {
+  if (!isAdmin()) return;
+  EVT.gold.active = false;
+  _cleanGold();
+  fetch(DB_URL + 'admin/events/gold.json', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: false })
+  }).catch(function() {});
+  document.getElementById('ev-gold-status').textContent = '골드 이벤트 없음';
+  adminLog('골드 이벤트 중지', 'info');
+  showNotice('💰 골드 이벤트가 종료되었습니다.');
+}
+
+function _cleanGold() {
+  if (typeof scene === 'undefined') return;
+  EVT.gold.coins.forEach(function(c) { scene.remove(c.mesh); c.mesh.geometry.dispose(); });
+  EVT.gold.coins = [];
+}
+
+function _spawnGoldCoin() {
+  if (typeof scene === 'undefined') return;
+  var geo = new THREE.SphereGeometry(0.22, 8, 8);
+  var mat = new THREE.MeshBasicMaterial({ color: 0xffd700 });
+  var mesh = new THREE.Mesh(geo, mat);
+  var rx = P.x + (Math.random() * 18 - 9);
+  var rz = P.y + (Math.random() * 18 - 9);
+  mesh.position.set(rx, 10 + Math.random() * 5, rz);
+  scene.add(mesh);
+  EVT.gold.coins.push({ mesh: mesh, vy: 0, collected: false });
+}
+
+function _startGoldLoop() {
+  var lastT = performance.now();
+  function loop(now) {
+    var dt = Math.min((now - lastT) / 1000, 0.05);
+    lastT = now;
+
+    if (!EVT.gold.active || Date.now() > EVT.gold.until) {
+      if (isAdmin()) adminGoldStop();
+      else { EVT.gold.active = false; _cleanGold(); }
+      return;
+    }
+
+    // 코인 스폰
+    EVT.gold.spawnTimer -= dt;
+    if (EVT.gold.spawnTimer <= 0) {
+      _spawnGoldCoin();
+      EVT.gold.spawnTimer = 0.25 + Math.random() * 0.35;
+    }
+
+    // 코인 낙하 + 수집 판정
+    for (var i = EVT.gold.coins.length - 1; i >= 0; i--) {
+      var c = EVT.gold.coins[i];
+      if (c.collected) { scene.remove(c.mesh); EVT.gold.coins.splice(i, 1); continue; }
+
+      c.vy -= 9 * dt;
+      c.mesh.position.y += c.vy * dt;
+      c.mesh.rotation.y += dt * 3;
+
+      // 바닥 도달 시 정지
+      if (c.mesh.position.y <= 0.3) {
+        c.mesh.position.y = 0.3;
+        c.vy = 0;
+      }
+
+      // 플레이어 근접 수집
+      var dx = P.x - c.mesh.position.x;
+      var dz = P.y - c.mesh.position.z;
+      if (Math.sqrt(dx*dx + dz*dz) < 1.4) {
+        c.collected = true;
+        P.money += EVT.gold.amount;
+        updateHUD();
+        showNotice('💰 +₦' + EVT.gold.amount.toLocaleString() + ' 획득!');
+      }
+    }
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ────────────────────────────────────────────────────────
+//  Firebase 이벤트 폴링 (일반 플레이어도 이벤트 동기화)
+// ────────────────────────────────────────────────────────
+var _evtLastFW   = 0;
+var _evtLastGold = 0;
+var _evtLastTreasure = '';
+
+function _startEventPoll() {
+  if (EVT_POLL) clearInterval(EVT_POLL);
+  EVT_POLL = setInterval(async function() {
+    try {
+      var res = await fetch(DB_URL + 'admin/events.json');
+      if (!res.ok) return;
+      var data = await res.json();
+      if (!data) return;
+
+      // 불꽃 동기화 (관리자가 아닌 플레이어)
+      if (data.fireworks && data.fireworks.active && !isAdmin()) {
+        if (data.fireworks.until > Date.now() && !EVT.fireworks.active) {
+          EVT.fireworks.type  = data.fireworks.type || 'rainbow';
+          EVT.fireworks.until = data.fireworks.until;
+          EVT.fireworks.active = true;
+          _startFireworksLoop();
+        }
+      } else if (data.fireworks && !data.fireworks.active && EVT.fireworks.active && !isAdmin()) {
+        EVT.fireworks.active = false;
+        _cleanFireworks();
+      }
+
+      // 골드 동기화 (관리자가 아닌 플레이어)
+      if (data.gold && data.gold.active && !isAdmin()) {
+        if (data.gold.until > Date.now() && !EVT.gold.active) {
+          EVT.gold.amount = data.gold.amount || 5000;
+          EVT.gold.until  = data.gold.until;
+          EVT.gold.active = true;
+          _startGoldLoop();
+        }
+      } else if (data.gold && !data.gold.active && EVT.gold.active && !isAdmin()) {
+        EVT.gold.active = false;
+        _cleanGold();
+      }
+
+      // 보물 동기화
+      if (data.treasure && data.treasure.active) {
+        if (data.treasure.id !== _evtLastTreasure) {
+          _evtLastTreasure = data.treasure.id;
+          EVT.treasure.x = data.treasure.x;
+          EVT.treasure.y = data.treasure.y;
+          EVT.treasure.reward = data.treasure.reward;
+          EVT.treasure.id = data.treasure.id;
+          _placeTreasureMesh(data.treasure.x, data.treasure.y);
+        }
+      } else if (data.treasure && !data.treasure.active && EVT.treasure.active) {
+        _removeTreasureMesh();
+        EVT.treasure.active = false;
+      }
+    } catch (e) {}
+  }, 4000);
+}
+
+// ── 보물·애니메이션 업데이트를 기존 게임 RAF 루프에 연결 ──
+// 별도 RAF 루프로 보물 애니메이션 + 근접 감지 처리
+(function _evtAnimLoop() {
+  function loop(now) {
+    _animateTreasure(now);
+    _checkTreasureProximity();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+
+// startMultiplayer 이후에 이벤트 폴링 시작 (기존 래퍼 체인 끝에 연결)
+var _origStartMultiplayer2 = startMultiplayer;
+startMultiplayer = function() {
+  _origStartMultiplayer2();
+  _startEventPoll();
+};
+
+
+
+// ════════════════════════════════════════════════════════
+//   관리자 신규 기능 — 순간이동모드 / 변장 / 소환 / 고정
+//                    자금 / 기기차단 / 투표 / 메모장
+// ════════════════════════════════════════════════════════
+
+// ── 상태 ──
+var newAdminState = {
+  tpMode:     false,
+  disguise:   false,
+  disguiseName: '',
+  frozenPlayers: {},   // { uname: true }
+  deviceBans: {},      // { fingerprint: uname }
+  memoSaveTimer: null,
+  vote: null,          // 현재 진행 중 투표 객체
+  myVoteChoice: null,
+  voteTimerInterval: null,
+  votePollInterval: null,
+};
+
+// ── 기기 핑거프린트 생성 (IP 대용) ──
+function getDeviceFingerprint() {
+  var raw = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    new Date().getTimezoneOffset(),
+    navigator.hardwareConcurrency || 0,
+  ].join('|');
+  var hash = 0;
+  for (var i = 0; i < raw.length; i++) {
+    hash = ((hash << 5) - hash) + raw.charCodeAt(i);
+    hash |= 0;
+  }
+  return 'fp_' + Math.abs(hash).toString(16);
+}
+var MY_DEVICE_FP = getDeviceFingerprint();
+
+// ────────────────────────────────────────────────────────
+//  순간이동 모드 (미니맵 클릭)
+// ────────────────────────────────────────────────────────
+(function setupTpMode() {
+  var mm = document.getElementById('minimap');
+  if (!mm) return;
+  mm.addEventListener('click', function(e) {
+    if (!adminState.tpMode || !isAdmin()) return;
+    var rect = mm.getBoundingClientRect();
+    var px = (e.clientX - rect.left) / rect.width;
+    var py = (e.clientY - rect.top)  / rect.height;
+    var wx = px * MW;
+    var wy = py * MH;
+    wx = Math.max(0.5, Math.min(MW - 0.5, wx));
+    wy = Math.max(0.5, Math.min(MH - 0.5, wy));
+    P.x = wx; P.y = wy;
+    if (playerGroup) playerGroup.position.set(P.x, P.h || 0, P.y);
+    adminLog('순간이동 모드: (' + wx.toFixed(1) + ', ' + wy.toFixed(1) + ')', 'ok');
+    showNotice('🌀 (' + wx.toFixed(1) + ', ' + wy.toFixed(1) + ') 로 순간이동');
+  });
+})();
+
+// ── adminToggle 확장 (tpMode, disguise) ──
+var _origAdminToggle = adminToggle;
+adminToggle = function(feature, val) {
+  if (feature === 'tpmode') {
+    adminState.tpMode = val;
+    adminLog('순간이동 모드 ' + (val ? '활성화 — 미니맵을 클릭하세요' : '비활성화'), val ? 'ok' : 'info');
+    showNotice(val ? '🌀 순간이동 모드 ON — 미니맵 클릭으로 이동' : '🌀 순간이동 모드 OFF');
+    updateAdminModeStatus();
+    return;
+  }
+  if (feature === 'disguise') {
+    newAdminState.disguise = val;
+    var row = document.getElementById('admin-disguise-row');
+    if (row) row.style.display = val ? 'block' : 'none';
+    if (!val) {
+      newAdminState.disguiseName = '';
+      adminLog('변장 모드 해제', 'info');
+      showNotice('🎭 변장 해제');
+    } else {
+      adminLog('변장 모드 활성화 — 이름을 입력하세요', 'ok');
+      showNotice('🎭 변장 모드 ON');
+    }
+    updateAdminModeStatus();
+    return;
+  }
+  _origAdminToggle(feature, val);
+};
+
+// ── updateAdminModeStatus 확장 ──
+var _origUpdateModeStatus = updateAdminModeStatus;
+updateAdminModeStatus = function() {
+  _origUpdateModeStatus();
+  // 추가 모드 배지
+  var el = document.getElementById('admin-mode-status');
+  if (!el) return;
+  var extra = [];
+  if (adminState.tpMode)         extra.push('🌀 순간이동');
+  if (newAdminState.disguise)    extra.push('🎭 변장:' + (newAdminState.disguiseName || '?'));
+  if (extra.length) {
+    el.textContent = (el.textContent === '활성 모드 없음' ? '' : el.textContent + '  |  ') + extra.join('  |  ');
+  }
+};
+
+// ── 변장 모드 적용 ──
+function adminApplyDisguise() {
+  if (!isAdmin()) return;
+  var name = document.getElementById('admin-disguise-name').value.trim();
+  if (!name) { showNotice('❌ 위장할 유저명을 입력하세요.'); return; }
+  newAdminState.disguiseName = name;
+  adminLog('변장: ' + name + ' 으로 위장', 'ok');
+  showNotice('🎭 ' + name + ' 으로 변장 완료');
+  updateAdminModeStatus();
+}
+
+// broadcastPlayerPosition 패치 — 변장 시 다른 이름으로 송출
+var _origBroadcast = broadcastPlayerPosition;
+broadcastPlayerPosition = function() {
+  if (newAdminState.disguise && newAdminState.disguiseName && isAdmin()) {
+    // 변장 이름으로 브로드캐스트
+    if (!currentUsername || !isCloudConnected) return;
+    var payload = { x: P.x, y: P.y, angle: P.angle, t: Date.now(), disguised: true };
+    fetch(DB_URL + 'online_players/' + encodeURIComponent(newAdminState.disguiseName) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(function() {});
+    return;
+  }
+  _origBroadcast();
+};
+
+// ────────────────────────────────────────────────────────
+//  플레이어 소환
+// ────────────────────────────────────────────────────────
+async function adminSummonPlayer() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-summon-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+  if (!otherPlayers[uname]) { showNotice('❌ ' + uname + ' 은(는) 현재 오프라인입니다.'); return; }
+
+  try {
+    await fetch(DB_URL + 'admin/summon/' + encodeURIComponent(uname) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ x: P.x, y: P.y, t: Date.now(), by: ADMIN_ID })
+    });
+    var el = document.getElementById('admin-summon-status');
+    if (el) el.textContent = '✅ ' + uname + ' 소환 완료';
+    adminLog('플레이어 소환: ' + uname + ' → (' + P.x.toFixed(1) + ', ' + P.y.toFixed(1) + ')', 'ok');
+    showNotice('🧲 ' + uname + ' 소환 완료');
+  } catch (e) {
+    adminLog('소환 실패: ' + e.message, 'error');
+  }
+}
+
+// ────────────────────────────────────────────────────────
+//  플레이어 고정
+// ────────────────────────────────────────────────────────
+async function adminFreezePlayer() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-freeze-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+
+  try {
+    await fetch(DB_URL + 'admin/freeze/' + encodeURIComponent(uname) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frozen: true, t: Date.now(), by: ADMIN_ID })
+    });
+    newAdminState.frozenPlayers[uname] = true;
+    _renderFreezeStatus();
+    adminLog('플레이어 고정: ' + uname, 'warn');
+    showNotice('🫙 ' + uname + ' 이동 고정됨');
+  } catch (e) {
+    adminLog('고정 실패: ' + e.message, 'error');
+  }
+}
+
+async function adminUnfreezePlayer() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-freeze-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+
+  try {
+    await fetch(DB_URL + 'admin/freeze/' + encodeURIComponent(uname) + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frozen: false, t: Date.now() })
+    });
+    delete newAdminState.frozenPlayers[uname];
+    _renderFreezeStatus();
+    adminLog('플레이어 고정 해제: ' + uname, 'ok');
+    showNotice('🔓 ' + uname + ' 이동 해제됨');
+  } catch (e) {
+    adminLog('고정 해제 실패: ' + e.message, 'error');
+  }
+}
+
+function _renderFreezeStatus() {
+  var el = document.getElementById('admin-freeze-status');
+  if (!el) return;
+  var list = Object.keys(newAdminState.frozenPlayers);
+  el.textContent = list.length ? '🫙 고정 중: ' + list.join(', ') : '고정된 플레이어 없음';
+}
+
+// 일반 플레이어 — 소환 / 고정 / 투표 폴링
+var _newAdminPollInterval = null;
+var _origStartMultiplayer3 = startMultiplayer;
+startMultiplayer = function() {
+  _origStartMultiplayer3();
+  if (_newAdminPollInterval) clearInterval(_newAdminPollInterval);
+  _newAdminPollInterval = setInterval(_newAdminPoll, 3000);
+};
+
+async function _newAdminPoll() {
+  try {
+    // 소환 감지
+    if (currentUsername && currentUsername !== ADMIN_ID) {
+      var sr = await fetch(DB_URL + 'admin/summon/' + encodeURIComponent(currentUsername) + '.json');
+      if (sr.ok) {
+        var sd = await sr.json();
+        if (sd && sd.t && (Date.now() - sd.t) < 10000) {
+          P.x = sd.x + 1; P.y = sd.y + 1;
+          if (playerGroup) playerGroup.position.set(P.x, 0, P.y);
+          showNotice('🧲 관리자가 소환했습니다!');
+          // 소환 명령 삭제
+          await fetch(DB_URL + 'admin/summon/' + encodeURIComponent(currentUsername) + '.json', { method: 'DELETE' });
+        }
+      }
+    }
+
+    // 고정 감지
+    if (currentUsername && currentUsername !== ADMIN_ID) {
+      var fr = await fetch(DB_URL + 'admin/freeze/' + encodeURIComponent(currentUsername) + '.json');
+      if (fr.ok) {
+        var fd = await fr.json();
+        if (fd && fd.frozen) {
+          // 이동 키 강제 초기화
+          Object.keys(K).forEach(function(k) { K[k] = false; });
+          showNotice('🫙 관리자에 의해 이동이 제한되었습니다.');
+        }
+      }
+    }
+
+    // 기기 차단 감지
+    var bdr = await fetch(DB_URL + 'admin/device_bans/' + MY_DEVICE_FP + '.json');
+    if (bdr.ok) {
+      var bdd = await bdr.json();
+      if (bdd && bdd.banned) {
+        showNotice('🚫 이 기기는 접근이 차단되었습니다.');
+        // 강제 이동 불가
+        Object.keys(K).forEach(function(k) { K[k] = false; });
+      }
+    }
+
+    // 투표 폴링
+    _pollVote();
+  } catch (e) {}
+}
+
+// ────────────────────────────────────────────────────────
+//  자금 지급 / 압수
+// ────────────────────────────────────────────────────────
+async function adminMoneyAction(action) {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-citizen-search').value.trim();
+  if (!uname) { showNotice('❌ 국민 탭 검색란에서 대상을 먼저 검색하세요.'); return; }
+  var amount = parseInt(document.getElementById('admin-money-amount').value) || 0;
+  if (amount <= 0) { showNotice('❌ 금액을 입력하세요.'); return; }
+
+  try {
+    var data = await adminLoadUser(uname);
+    if (!data) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+
+    var before = data.money || 0;
+    if (action === 'give') {
+      data.money = before + amount;
+    } else {
+      data.money = Math.max(0, before - amount);
+    }
+    await adminSaveUser(uname, data);
+
+    var label = action === 'give' ? '지급' : '압수';
+    var icon  = action === 'give' ? '💰' : '💸';
+    adminLog(label + ': ' + uname + ' ₦' + amount.toLocaleString() + ' (' + before.toLocaleString() + ' → ' + data.money.toLocaleString() + ')', 'ok');
+    showNotice(icon + ' ' + uname + ' 에게 ₦' + amount.toLocaleString() + ' ' + label + ' 완료');
+    adminCitizenSearch();
+
+    // 현재 접속 중이면 실시간 반영 메시지
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        msg: icon + ' [관리자] ' + uname + ' 님의 자금이 ' + label + '되었습니다. (₦' + data.money.toLocaleString() + ')',
+        from: ADMIN_ID, t: Date.now()
+      })
+    });
+  } catch (e) {
+    adminLog('자금 ' + (action==='give'?'지급':'압수') + ' 실패: ' + e.message, 'error');
+  }
+}
+
+// ────────────────────────────────────────────────────────
+//  기기 차단
+// ────────────────────────────────────────────────────────
+async function adminBanDevice() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-ip-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+
+  // 해당 유저의 기기 핑거프린트 조회
+  try {
+    var data = await adminLoadUser(uname);
+    if (!data) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+    var fp = data.deviceFP || ('user_' + uname);
+
+    await fetch(DB_URL + 'admin/device_bans/' + fp + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ banned: true, uname: uname, by: ADMIN_ID, t: Date.now() })
+    });
+
+    newAdminState.deviceBans[fp] = uname;
+    _renderDeviceBanList();
+    adminLog('기기 차단: ' + uname + ' (fp: ' + fp + ')', 'warn');
+    showNotice('🌐 ' + uname + ' 기기 차단 완료');
+  } catch (e) {
+    adminLog('기기 차단 실패: ' + e.message, 'error');
+  }
+}
+
+async function adminUnbanDevice() {
+  if (!isAdmin()) return;
+  var uname = document.getElementById('admin-ip-input').value.trim();
+  if (!uname) { showNotice('❌ 유저명을 입력하세요.'); return; }
+
+  try {
+    var data = await adminLoadUser(uname);
+    if (!data) { showNotice('❌ 존재하지 않는 유저입니다.'); return; }
+    var fp = data.deviceFP || ('user_' + uname);
+
+    await fetch(DB_URL + 'admin/device_bans/' + fp + '.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ banned: false })
+    });
+
+    delete newAdminState.deviceBans[fp];
+    _renderDeviceBanList();
+    adminLog('기기 차단 해제: ' + uname, 'ok');
+    showNotice('✅ ' + uname + ' 기기 차단 해제');
+  } catch (e) {
+    adminLog('해제 실패: ' + e.message, 'error');
+  }
+}
+
+function _renderDeviceBanList() {
+  var el = document.getElementById('admin-ip-list');
+  if (!el) return;
+  var list = Object.values(newAdminState.deviceBans);
+  el.textContent = list.length ? '🚫 차단: ' + list.join(', ') : '차단된 기기 없음';
+}
+
+// 로그인 시 기기 핑거프린트 저장
+var _origLoginBtn = document.getElementById('loginBtn');
+if (_origLoginBtn) {
+  _origLoginBtn.addEventListener('click', async function() {
+    var uname = document.getElementById('username').value.trim();
+    if (!uname) return;
+    // 잠시 후 저장 (로그인 성공 후)
+    setTimeout(async function() {
+      if (currentUsername === uname) {
+        try {
+          var data = await adminLoadUser(uname);
+          if (data && !data.deviceFP) {
+            data.deviceFP = MY_DEVICE_FP;
+            await adminSaveUser(uname, data);
+          }
+        } catch (e) {}
+      }
+    }, 3000);
+  });
+}
+
+// ────────────────────────────────────────────────────────
+//  긴급 투표
+// ────────────────────────────────────────────────────────
+async function adminStartVote() {
+  if (!isAdmin()) return;
+  var question = document.getElementById('admin-vote-question').value.trim();
+  var opt1     = document.getElementById('admin-vote-opt1').value.trim();
+  var opt2     = document.getElementById('admin-vote-opt2').value.trim();
+  var duration = parseInt(document.getElementById('admin-vote-duration').value) || 60;
+
+  if (!question || !opt1 || !opt2) { showNotice('❌ 질문과 선택지 2개를 모두 입력하세요.'); return; }
+
+  var voteData = {
+    active: true,
+    question: question,
+    options: [opt1, opt2],
+    votes: { '0': 0, '1': 0 },
+    until: Date.now() + duration * 1000,
+    by: ADMIN_ID,
+    t: Date.now()
+  };
+
+  try {
+    await fetch(DB_URL + 'admin/vote.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(voteData)
+    });
+    await fetch(DB_URL + 'admin/global_notice.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ msg: '🗳️ [긴급 투표] ' + question, from: ADMIN_ID, t: Date.now() })
+    });
+    adminLog('긴급 투표 시작: "' + question + '"', 'ok');
+    showNotice('🗳️ 긴급 투표 시작!');
+    _showVotePopup(voteData);
+  } catch (e) {
+    adminLog('투표 시작 실패: ' + e.message, 'error');
+  }
+}
+
+async function adminEndVote() {
+  if (!isAdmin()) return;
+  try {
+    var res = await fetch(DB_URL + 'admin/vote.json');
+    var voteData = await res.json();
+    if (voteData) {
+      voteData.active = false;
+      await fetch(DB_URL + 'admin/vote.json', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(voteData)
+      });
+    }
+    _hideVotePopup();
+    adminLog('투표 강제 종료', 'info');
+    showNotice('🗳️ 투표가 종료되었습니다.');
+  } catch (e) {}
+}
+
+function _showVotePopup(voteData) {
+  var popup = document.getElementById('vote-popup');
+  if (!popup) return;
+  newAdminState.vote = voteData;
+  newAdminState.myVoteChoice = null;
+
+  document.getElementById('vote-question-text').textContent = voteData.question;
+
+  var optContainer = document.getElementById('vote-options');
+  optContainer.innerHTML = voteData.options.map(function(opt, i) {
+    return '<button onclick="adminCastVote(' + i + ')" class="admin-btn admin-btn-cyan" style="width:100%;text-align:left;padding:8px 12px;font-size:13px;">' + opt + '</button>';
+  }).join('');
+
+  popup.style.display = 'block';
+  _updateVoteTimer(voteData);
+}
+
+function _hideVotePopup() {
+  var popup = document.getElementById('vote-popup');
+  if (popup) popup.style.display = 'none';
+  if (newAdminState.voteTimerInterval) clearInterval(newAdminState.voteTimerInterval);
+  newAdminState.vote = null;
+}
+
+function _updateVoteTimer(voteData) {
+  if (newAdminState.voteTimerInterval) clearInterval(newAdminState.voteTimerInterval);
+  newAdminState.voteTimerInterval = setInterval(function() {
+    var left = Math.max(0, Math.ceil((voteData.until - Date.now()) / 1000));
+    var el = document.getElementById('vote-timer');
+    if (el) el.textContent = left + '초';
+    if (left <= 0) {
+      _hideVotePopup();
+      showNotice('🗳️ 투표가 종료되었습니다.');
+    }
+  }, 1000);
+}
+
+async function adminCastVote(optIdx) {
+  if (newAdminState.myVoteChoice !== null) {
+    showNotice('이미 투표하셨습니다.'); return;
+  }
+  newAdminState.myVoteChoice = optIdx;
+
+  // 버튼 비활성화
+  var btns = document.querySelectorAll('#vote-options button');
+  btns.forEach(function(b) { b.disabled = true; });
+  btns[optIdx].style.background = 'rgba(0,229,255,0.3)';
+  btns[optIdx].style.borderColor = '#00e5ff';
+
+  try {
+    var res = await fetch(DB_URL + 'admin/vote.json');
+    var data = await res.json();
+    if (!data || !data.active) { showNotice('투표가 이미 종료되었습니다.'); return; }
+    data.votes = data.votes || { '0': 0, '1': 0 };
+    data.votes[String(optIdx)] = (data.votes[String(optIdx)] || 0) + 1;
+    await fetch(DB_URL + 'admin/vote.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    showNotice('✅ 투표 완료: ' + data.options[optIdx]);
+  } catch (e) {}
+}
+
+async function _pollVote() {
+  try {
+    var res = await fetch(DB_URL + 'admin/vote.json');
+    if (!res.ok) return;
+    var data = await res.json();
+
+    if (data && data.active && Date.now() < data.until) {
+      // 투표가 활성화됐고 팝업이 아직 없으면 표시
+      if (!newAdminState.vote) _showVotePopup(data);
+
+      // 결과 업데이트
+      var counts = document.getElementById('vote-counts');
+      if (counts && data.options) {
+        counts.innerHTML = data.options.map(function(opt, i) {
+          return opt + ': <strong>' + (data.votes && data.votes[String(i)] || 0) + '표</strong>';
+        }).join('&nbsp;&nbsp;|&nbsp;&nbsp;');
+      }
+
+      // 관리자 패널 결과 표시
+      if (isAdmin()) {
+        var vr = document.getElementById('admin-vote-result');
+        if (vr) {
+          vr.innerHTML = (data.options || []).map(function(opt, i) {
+            return opt + ': <strong>' + (data.votes && data.votes[String(i)] || 0) + '표</strong>';
+          }).join(' | ');
+        }
+      }
+    } else if ((!data || !data.active) && newAdminState.vote) {
+      _hideVotePopup();
+    }
+  } catch (e) {}
+}
+
+// ────────────────────────────────────────────────────────
+//  메모장
+// ────────────────────────────────────────────────────────
+function adminMemoAutoSave() {
+  if (!isAdmin()) return;
+  if (newAdminState.memoSaveTimer) clearTimeout(newAdminState.memoSaveTimer);
+  var el = document.getElementById('admin-memo-status');
+  if (el) el.textContent = '입력 중...';
+  newAdminState.memoSaveTimer = setTimeout(function() {
+    _adminMemoSave();
+  }, 1200);
+}
+
+async function _adminMemoSave() {
+  var text = document.getElementById('admin-memo-input').value;
+  try {
+    await fetch(DB_URL + 'admin/memo.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: text, savedAt: Date.now() })
+    });
+    var el = document.getElementById('admin-memo-status');
+    if (el) el.textContent = '✅ ' + new Date().toLocaleTimeString('ko-KR') + ' 저장됨';
+  } catch (e) {
+    var el = document.getElementById('admin-memo-status');
+    if (el) el.textContent = '❌ 저장 실패';
+  }
+}
+
+async function adminMemoLoad() {
+  if (!isAdmin()) return;
+  try {
+    var res = await fetch(DB_URL + 'admin/memo.json');
+    if (!res.ok) { showNotice('❌ 메모 불러오기 실패'); return; }
+    var data = await res.json();
+    if (!data || !data.text) { showNotice('저장된 메모가 없습니다.'); return; }
+    document.getElementById('admin-memo-input').value = data.text;
+    var el = document.getElementById('admin-memo-status');
+    if (el) el.textContent = '📂 불러옴 — ' + new Date(data.savedAt).toLocaleString('ko-KR');
+    showNotice('📂 메모 불러오기 완료');
+  } catch (e) {
+    adminLog('메모 불러오기 실패: ' + e.message, 'error');
+  }
+}
+
+async function adminMemoClear() {
+  if (!isAdmin()) return;
+  if (!confirm('메모를 삭제하시겠습니까?')) return;
+  document.getElementById('admin-memo-input').value = '';
+  try {
+    await fetch(DB_URL + 'admin/memo.json', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: '', savedAt: Date.now() })
+    });
+    var el = document.getElementById('admin-memo-status');
+    if (el) el.textContent = '🗑️ 삭제됨';
+    showNotice('🗑️ 메모 삭제 완료');
+  } catch (e) {}
+}
+
+// initAdminPanel 확장 — 기기 차단 목록 + 메모 불러오기
+var _origInitAdmin2 = initAdminPanel;
+initAdminPanel = function() {
+  // 버튼 먼저 노출 (안전망)
+  var _btn = document.getElementById('admin-toggle-btn');
+  if (_btn) _btn.style.display = 'block';
+  try { _origInitAdmin2(); } catch (e) { console.warn('[Admin] initAdminPanel chain 오류:', e); }
+  // 비동기 초기화 — 딜레이 후 실행하여 로그인 흐름과 분리
+  setTimeout(function() {
+    // 기기 차단 목록 불러오기
+    fetch(DB_URL + 'admin/device_bans.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data) return;
+        Object.entries(data).forEach(function(entry) {
+          if (entry[1] && entry[1].banned) newAdminState.deviceBans[entry[0]] = entry[1].uname || entry[0];
+        });
+        _renderDeviceBanList();
+      }).catch(function() {});
+    // 메모 불러오기 (서버 탭 열 때도 호출되므로 여기서는 조용히)
+    fetch(DB_URL + 'admin/memo.json')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data || !data.text) return;
+        var inp = document.getElementById('admin-memo-input');
+        if (inp) inp.value = data.text;
+        var st = document.getElementById('admin-memo-status');
+        if (st) st.textContent = '📂 자동 복원됨';
+      }).catch(function() {});
+  }, 300);
+};
+
+
+
+// ════════════════════════════════════════════
+//  📱 모바일 터치 컨트롤
+// ════════════════════════════════════════════
+
+var isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+
+if (isMobile) {
+  // ── 컨트롤 패널 표시 ──
+  var mCtrl = document.getElementById('m-controls');
+  if (mCtrl) mCtrl.style.display = 'block';
+
+  // ── 포인터락 요청 비활성화 (모바일 미지원) ──
+  var _origRequestPointerLock = HTMLElement.prototype.requestPointerLock;
+  HTMLElement.prototype.requestPointerLock = function() {
+    try { _origRequestPointerLock.call(this); } catch(e) {}
+  };
+
+  // ── 스크롤/핀치줌 방지 ──
+  document.addEventListener('touchmove', function(e) {
+    if (e.target === document.getElementById('admin-panel') ||
+        e.target.closest && e.target.closest('#admin-panel')) return;
+    e.preventDefault();
+  }, { passive: false });
+
+  // ════════════════════
+  //  조이스틱
+  // ════════════════════
+  var joyBase  = document.getElementById('m-joy-base');
+  var joyKnob  = document.getElementById('m-joy-knob');
+  var JOY_R    = 40; // 최대 이동 반경(px)
+  var joyTouchId = null;
+  var joyOriginX = 0, joyOriginY = 0;
+
+  function joyReset() {
+    joyTouchId = null;
+    K['w'] = K['s'] = K['a'] = K['d'] = false;
+    if (joyKnob) joyKnob.style.transform = 'translate(-50%,-50%)';
+  }
+
+  if (joyBase) {
+    joyBase.addEventListener('touchstart', function(e) {
+      e.preventDefault();
+      if (joyTouchId !== null) return;
+      var t = e.changedTouches[0];
+      joyTouchId  = t.identifier;
+      var r = joyBase.getBoundingClientRect();
+      joyOriginX  = r.left + r.width  / 2;
+      joyOriginY  = r.top  + r.height / 2;
+    }, { passive: false });
+
+    joyBase.addEventListener('touchmove', function(e) {
+      e.preventDefault();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.identifier !== joyTouchId) continue;
+        var dx = t.clientX - joyOriginX;
+        var dy = t.clientY - joyOriginY;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        var angle = Math.atan2(dy, dx);
+        var clamp = Math.min(dist, JOY_R);
+        var kx = clamp * Math.cos(angle);
+        var ky = clamp * Math.sin(angle);
+        if (joyKnob) joyKnob.style.transform = 'translate(calc(-50% + ' + kx + 'px), calc(-50% + ' + ky + 'px))';
+
+        // 방향 → K 키
+        var th = JOY_R * 0.35;
+        K['w'] = dy < -th;
+        K['s'] = dy >  th;
+        K['a'] = dx < -th;
+        K['d'] = dx >  th;
+        break;
+      }
+    }, { passive: false });
+
+    joyBase.addEventListener('touchend', function(e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === joyTouchId) { joyReset(); break; }
+      }
+    }, { passive: false });
+
+    joyBase.addEventListener('touchcancel', joyReset, { passive: false });
+  }
+
+  // ════════════════════
+  //  카메라 터치 (기존 isDragging 충돌 방지)
+  //  — 조이스틱이 아닌 캔버스 터치는 카메라 회전
+  // ════════════════════
+  var camTouchId = null;
+  var camPrevX   = 0;
+  var camSensitivity = 0.006;
+
+  var c2 = document.getElementById('c') || document.querySelector('canvas');
+  if (c2) {
+    c2.addEventListener('touchstart', function(e) {
+      isDragging = false; // 기존 핸들러의 회전 방지
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (camTouchId === null) {
+          camTouchId = t.identifier;
+          camPrevX   = t.clientX;
+          break;
+        }
+      }
+    }, { passive: true });
+
+    c2.addEventListener('touchmove', function(e) {
+      isDragging = false; // 기존 핸들러 차단
+      if (camTouchId === null || dlgOpen) return;
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.identifier === camTouchId) {
+          var dx = t.clientX - camPrevX;
+          camPrevX = t.clientX;
+          cameraYaw -= dx * camSensitivity;
+          P.angle = cameraYaw;
+          break;
+        }
+      }
+    }, { passive: true });
+
+    c2.addEventListener('touchend', function(e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === camTouchId) {
+          camTouchId = null;
+          break;
+        }
+      }
+    }, { passive: true });
+  }
+
+  // ════════════════════
+  //  액션 버튼
+  // ════════════════════
+  function mbtnOn(id, keyOrFn) {
+    var btn = document.getElementById(id);
+    if (!btn) return;
+    if (typeof keyOrFn === 'string') {
+      btn.addEventListener('touchstart', function(e) { e.preventDefault(); K[keyOrFn] = true; }, { passive: false });
+      btn.addEventListener('touchend',   function(e) { e.preventDefault(); K[keyOrFn] = false; }, { passive: false });
+    } else {
+      btn.addEventListener('touchstart', function(e) { e.preventDefault(); keyOrFn(); }, { passive: false });
+    }
+  }
+
+  // 점프 (스페이스)
+  mbtnOn('m-btn-jump', ' ');
+
+  // 상호작용 (E)
+  mbtnOn('m-btn-e', function() { interact(); });
+
+  // 미니맵 토글
+  mbtnOn('m-btn-map', function() {
+    var mm = document.getElementById('minimap-container');
+    if (mm) mm.style.display = mm.style.display === 'none' ? '' : 'none';
+  });
+
+  // 대시보드 토글
+  mbtnOn('m-btn-dash', function() {
+    if (typeof toggleDashboard === 'function') toggleDashboard();
+  });
+
+  // ── 게임 시작 시 컨트롤 표시 ──
+  var _origStartMultiplayer4 = startMultiplayer;
+  startMultiplayer = function() {
+    _origStartMultiplayer4();
+    if (mCtrl) mCtrl.style.display = 'block';
+  };
+}
+
+
+
+// ════════════════════════════════════════════
+//  📱 가로 모드 (Landscape) 지원
+// ════════════════════════════════════════════
+
+(function() {
+  if (!isMobile) return;
+
+  var rotateHint = document.getElementById('rotate-hint');
+
+  // ── 방향 변경 시 처리 ──
+  function onOrientationChange() {
+    var isLandscape = window.innerWidth > window.innerHeight;
+
+    // Three.js 렌더러 리사이즈 (약간 딜레이 — 브라우저 리플로우 대기)
+    setTimeout(function() {
+      if (camera && renderer) {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+
+      // 조이스틱 원점 리셋 (화면 크기 바뀌었으므로)
+      joyReset();
+
+      // 힌트 오버레이 — 세로 + 게임 중일 때만 표시
+      if (rotateHint) {
+        var gameActive = document.body.classList.contains('game-active');
+        if (!isLandscape && gameActive) {
+          rotateHint.style.display = 'flex';
+        } else {
+          rotateHint.style.display = 'none';
+        }
+      }
+    }, 150);
+  }
+
+  window.addEventListener('orientationchange', onOrientationChange);
+  window.addEventListener('resize', onOrientationChange);
+
+  // ── 게임 시작 시 body에 클래스 추가 (힌트 표시 조건) ──
+  var _origStartMultiplayer5 = startMultiplayer;
+  startMultiplayer = function() {
+    _origStartMultiplayer5();
+    document.body.classList.add('game-active');
+    // 게임 시작 직후 가로 아니면 힌트 표시
+    if (window.innerWidth <= window.innerHeight && rotateHint) {
+      rotateHint.style.display = 'flex';
+    }
+  };
+
+  // ── 초기 화면 방향 적용 ──
+  onOrientationChange();
+})();
+

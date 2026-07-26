@@ -1,15 +1,18 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
   <script>
     window.addEventListener('error', function(e) {
-      alert("JS Error: " + e.message + " at " + e.filename + ":" + e.lineno);
+      console.error("JS Error:", e.message, "at", e.filename + ":" + e.lineno);
     });
   </script>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="네오이현 — 3D 국가 운영 시뮬레이션. 대통령이 되어 경제, 법률, 외교를 직접 관리하세요.">
-  <title>네오이현 — 3D 국가 운영 시뮬레이션</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="description" content="?ㅼ삤?댄쁽 ??3D 援?? ?댁쁺 ?쒕??덉씠?? ??듬졊???섏뼱 寃쎌젣, 踰뺣쪧, ?멸탳瑜?吏곸젒 愿由ы븯?몄슂.">
+  <title>?ㅼ삤?댄쁽 ??3D 援?? ?댁쁺 ?쒕??덉씠??/title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -19,47 +22,47 @@
 
   <canvas id="c"></canvas>
 
-  <!-- 📰 뉴스 티커 -->
+  <!-- ?벐 ?댁뒪 ?곗빱 -->
   <div id="news-ticker-wrap">
-    <span class="news-label">📡 뉴스</span>
+    <span class="news-label">?뱻 ?댁뒪</span>
     <div id="news-ticker-track">
-      <span id="news-ticker-text">📈 네오폴리스 뉴스 시스템 가동 중...</span>
+      <span id="news-ticker-text">?뱢 ?ㅼ삤?대━???댁뒪 ?쒖뒪??媛??以?..</span>
     </div>
   </div>
 
   <div id="hud">
     <div id="crosshair"></div>
     <div id="dist-name"></div>
-    <div id="interact-prompt">[E] 상호작용</div>
+    <div id="interact-prompt">[E] ?곹샇?묒슜</div>
 
     <div id="stats">
-      <div class="srow"><span class="sico">❤️</span><div class="sbg"><div class="sfg" id="bh" style="width:100%;background:#ff4560"></div></div><span class="sval" id="nh">100</span></div>
-      <div class="srow"><span class="sico">😊</span><div class="sbg"><div class="sfg" id="bp" style="width:75%;background:#00c8ff"></div></div><span class="sval" id="np">75</span></div>
-      <div class="srow"><span class="sico">🍔</span><div class="sbg"><div class="sfg" id="bf" style="width:80%;background:#ffb030"></div></div><span class="sval" id="nf">80</span></div>
-      <div class="srow"><span class="sico">⚡</span><div class="sbg"><div class="sfg" id="be" style="width:100%;background:#00e676"></div></div><span class="sval" id="ne">100</span></div>
-      <div class="srow"><span class="sico">📚</span><div class="sbg"><div class="sfg" id="bk" style="width:0%;background:#a855f7"></div></div><span class="sval" id="nk">0</span></div>
+      <div class="srow"><span class="sico">?ㅿ툘</span><div class="sbg"><div class="sfg" id="bh" style="width:100%;background:#ff4560"></div></div><span class="sval" id="nh">100</span></div>
+      <div class="srow"><span class="sico">?삃</span><div class="sbg"><div class="sfg" id="bp" style="width:75%;background:#00c8ff"></div></div><span class="sval" id="np">75</span></div>
+      <div class="srow"><span class="sico">?뜑</span><div class="sbg"><div class="sfg" id="bf" style="width:80%;background:#ffb030"></div></div><span class="sval" id="nf">80</span></div>
+      <div class="srow"><span class="sico">??/span><div class="sbg"><div class="sfg" id="be" style="width:100%;background:#00e676"></div></div><span class="sval" id="ne">100</span></div>
+      <div class="srow"><span class="sico">?뱴</span><div class="sbg"><div class="sfg" id="bk" style="width:0%;background:#a855f7"></div></div><span class="sval" id="nk">0</span></div>
     </div>
 
     <div id="money-hud">
-      <div class="label">잔고</div>
-      <div class="amount">₦<span id="mv">500,000</span></div>
+      <div class="label">?붽퀬</div>
+      <div class="amount">??span id="mv">500,000</span></div>
     </div>
 
     <div id="time-hud">
       <div class="t" id="tv">08:00</div>
-      <div class="d" id="td">1일차</div>
-      <div class="w" id="tw">☀️ 맑음</div>
+      <div class="d" id="td">1?쇱감</div>
+      <div class="w" id="tw">?截?留묒쓬</div>
     </div>
 
     <div id="district-hud">
-      <div class="dname" id="dname">중앙 광장</div>
-      <div id="cloud-hud"><span class="cloud-dot" id="cloudDot">●</span> <span id="cloudText">로컬 모드</span></div>
+      <div class="dname" id="dname">以묒븰 愿묒옣</div>
+      <div id="cloud-hud"><span class="cloud-dot" id="cloudDot">??/span> <span id="cloudText">濡쒖뺄 紐⑤뱶</span></div>
     </div>
 
     <canvas id="minimap" width="100" height="100"></canvas>
 
-    <!-- 🔊 음소거 버튼 -->
-    <button id="mute-btn" onclick="toggleMute()" title="음소거">🔊</button>
+    <!-- ?뵄 ?뚯냼嫄?踰꾪듉 -->
+    <button id="mute-btn" onclick="toggleMute()" title="?뚯냼嫄?>?뵄</button>
   </div>
 
   <div id="dialog">
@@ -70,23 +73,23 @@
 
   <div id="notice"></div>
 
-  <!-- 📋 퀘스트 패널 (우측 상단) -->
+  <!-- ?뱥 ?섏뒪???⑤꼸 (?곗륫 ?곷떒) -->
   <div id="quest-panel" class="glass-panel">
-    <div class="quest-header">📋 현재 퀘스트</div>
+    <div class="quest-header">?뱥 ?꾩옱 ?섏뒪??/div>
     <div id="quest-name" class="quest-name">-</div>
     <div id="quest-desc" class="quest-desc">-</div>
-    <div id="quest-progress" class="quest-progress">진행 중...</div>
+    <div id="quest-progress" class="quest-progress">吏꾪뻾 以?..</div>
   </div>
 
-  <!-- 🎒 인벤토리 패널 -->
+  <!-- ?럲 ?몃깽?좊━ ?⑤꼸 -->
   <div id="inventory-panel" class="glass-panel" style="display:none;">
     <div class="inv-header">
-      <span>🎒 인벤토리</span>
+      <span>?럲 ?몃깽?좊━</span>
       <button onclick="toggleInventory()" class="close-db-btn">&times;</button>
     </div>
     <div class="inv-slots" id="inv-slots"></div>
     <div class="inv-shop-section">
-      <div class="inv-shop-title">🛒 아이템 상점</div>
+      <div class="inv-shop-title">?썟 ?꾩씠???곸젏</div>
       <div id="inv-shop-items"></div>
     </div>
   </div>
@@ -94,79 +97,79 @@
   <div id="lock-screen">
     <div class="logo-wrap">
       <div class="logo-icon">N</div>
-      <h1>네오폴리스</h1>
-      <p>NEOPOLIS — 네오리아 수도 · 3D 클라우드 탐험</p>
+      <h1>?ㅼ삤?대━??/h1>
+      <p>NEOPOLIS ???ㅼ삤由ъ븘 ?섎룄 쨌 3D ?대씪?곕뱶 ?먰뿕</p>
     </div>
     
     <div id="login-container">
       <div class="input-group">
-        <label for="username">유저 아이디</label>
-        <input type="text" id="username" placeholder="아이디를 입력하세요..." maxlength="15">
+        <label for="username">?좎? ?꾩씠??/label>
+        <input type="text" id="username" placeholder="?꾩씠?붾? ?낅젰?섏꽭??.." maxlength="15">
       </div>
       <div class="input-group">
-        <label for="password">비밀번호</label>
-        <input type="password" id="password" placeholder="비밀번호를 입력하세요...">
+        <label for="password">鍮꾨?踰덊샇</label>
+        <input type="password" id="password" placeholder="鍮꾨?踰덊샇瑜??낅젰?섏꽭??..">
       </div>
       <div class="btn-group">
-        <button id="loginBtn" class="form-btn login-btn">로그인</button>
-        <button id="registerBtn" class="form-btn register-btn">회원가입</button>
+        <button id="loginBtn" class="form-btn login-btn">濡쒓렇??/button>
+        <button id="registerBtn" class="form-btn register-btn">?뚯썝媛??/button>
       </div>
       <div class="btn-group" style="margin-top:8px">
-        <button id="guestBtn" class="form-btn" style="width:100%;background:rgba(255,176,48,0.12);border-color:rgba(255,176,48,0.4);color:#ffb030" onclick="startGuest()">🎮 게스트로 시작 (테스트)</button>
+        <button id="guestBtn" class="form-btn" style="width:100%;background:rgba(255,176,48,0.12);border-color:rgba(255,176,48,0.4);color:#ffb030" onclick="startGuest()">?렜 寃뚯뒪?몃줈 ?쒖옉 (?뚯뒪??</button>
       </div>
-      <div id="login-status" class="status-msg">아이디와 비밀번호를 입력해 주세요.</div>
+      <div id="login-status" class="status-msg">?꾩씠?붿? 鍮꾨?踰덊샇瑜??낅젰??二쇱꽭??</div>
     </div>
 
     <div class="controls">
-      <div><span>W A S D / ↑ ↓ ← →</span> 캐릭터 이동</div>
-      <div><span>마우스</span> 카메라 시점 회전 (마우스 잠금)</div>
-      <div><span>E</span> 상호작용 / 지하철 이용</div>
-      <div><span>I</span> 인벤토리 열기/닫기</div>
-      <div><span>Tab</span> 대통령 집무실</div>
-      <div><span>R</span> 시점 전환</div>
-      <div><span>ESC</span> 메뉴 / 마우스 잠금 해제</div>
+      <div><span>W A S D / ????????/span> 罹먮┃???대룞</div>
+      <div><span>留덉슦??/span> 移대찓???쒖젏 ?뚯쟾 (留덉슦???좉툑)</div>
+      <div><span>E</span> ?곹샇?묒슜 / 吏?섏쿋 ?댁슜</div>
+      <div><span>I</span> ?몃깽?좊━ ?닿린/?リ린</div>
+      <div><span>Tab</span> ??듬졊 吏묐Т??/div>
+      <div><span>R</span> ?쒖젏 ?꾪솚</div>
+      <div><span>ESC</span> 硫붾돱 / 留덉슦???좉툑 ?댁젣</div>
     </div>
     <div class="city-stats">
-      <div class="cs-item"><span class="cs-val">5,280,000</span><span class="cs-label">인구</span></div>
-      <div class="cs-item"><span class="cs-val">86.7%</span><span class="cs-label">행복도</span></div>
-      <div class="cs-item"><span class="cs-val">AAA</span><span class="cs-label">신용등급</span></div>
-      <div class="cs-item"><span class="cs-val">1.8%</span><span class="cs-label">범죄율</span></div>
+      <div class="cs-item"><span class="cs-val">5,280,000</span><span class="cs-label">?멸뎄</span></div>
+      <div class="cs-item"><span class="cs-val">86.7%</span><span class="cs-label">?됰났??/span></div>
+      <div class="cs-item"><span class="cs-val">AAA</span><span class="cs-label">?좎슜?깃툒</span></div>
+      <div class="cs-item"><span class="cs-val">1.8%</span><span class="cs-label">踰붿즲??/span></div>
     </div>
   </div>
 
-  <!-- 🗳️ 선거 팝업 -->
+  <!-- ?뿳截??좉굅 ?앹뾽 -->
   <div id="election-popup" class="glass-panel modal-panel" style="display:none;">
-    <h3>🗳️ 선거일 — 대통령 재선 도전</h3>
-    <p id="election-desc">국민이 여러분의 리더십을 평가합니다.</p>
+    <h3>?뿳截??좉굅??????듬졊 ?ъ꽑 ?꾩쟾</h3>
+    <p id="election-desc">援?????щ윭遺꾩쓽 由щ뜑??쓣 ?됯??⑸땲??</p>
     <div class="election-gauge-wrap">
-      <div class="election-gauge-label">현재 지지율</div>
+      <div class="election-gauge-label">?꾩옱 吏吏??/div>
       <div class="election-gauge-bg">
         <div class="election-gauge-fill" id="election-gauge-fill"></div>
       </div>
       <div class="election-gauge-val" id="election-gauge-val">0%</div>
     </div>
     <div class="btn-group" style="margin-top:20px">
-      <button class="form-btn login-btn" onclick="runElection()">🗳️ 재선 도전</button>
-      <button class="form-btn register-btn" onclick="closeElection()">나중에</button>
+      <button class="form-btn login-btn" onclick="runElection()">?뿳截??ъ꽑 ?꾩쟾</button>
+      <button class="form-btn register-btn" onclick="closeElection()">?섏쨷??/button>
     </div>
   </div>
 
-  <!-- 🏛️ PRESIDENTIAL DASHBOARD (Glassmorphism UI) -->
+  <!-- ?룢截?PRESIDENTIAL DASHBOARD (Glassmorphism UI) -->
   <div id="dashboard" class="glass-panel">
     <div class="db-header">
       <div class="db-title-group">
-        <span class="db-icon">🏛️</span>
+        <span class="db-icon">?룢截?/span>
         <div>
-          <h2>네오이현 대통령 집무실</h2>
+          <h2>?ㅼ삤?댄쁽 ??듬졊 吏묐Т??/h2>
           <p class="db-subtitle">Neo-LeeHyeon Presidential Office</p>
         </div>
       </div>
       <button class="close-db-btn" onclick="toggleDashboard(false)">&times;</button>
     </div>
 
-    <!-- 지지율 게이지 -->
+    <!-- 吏吏??寃뚯씠吏 -->
     <div id="approval-bar-wrap">
-      <span class="approval-label">🗳️ 지지율</span>
+      <span class="approval-label">?뿳截?吏吏??/span>
       <div class="approval-bg">
         <div class="approval-fill" id="approval-fill" style="width:65%"></div>
       </div>
@@ -174,15 +177,15 @@
     </div>
 
     <div class="db-tabs">
-      <button class="db-tab-btn active" onclick="switchTab('overview')">📊 국가 지표</button>
-      <button class="db-tab-btn" onclick="switchTab('budget')">💸 예산 & 세율</button>
-      <button class="db-tab-btn" onclick="switchTab('citizens')">👥 국민 관리</button>
-      <button class="db-tab-btn" onclick="switchTab('stocks')">📈 주식 시장</button>
-      <button class="db-tab-btn" onclick="switchTab('realestate')">🏠 부동산</button>
-      <button class="db-tab-btn" onclick="switchTab('laws')">📜 법률 & 이벤트</button>
-      <button class="db-tab-btn" onclick="switchTab('diplomacy')">🤝 외교</button>
-      <button class="db-tab-btn" onclick="switchTab('projects')">🏗️ 국책 사업</button>
-      <button class="db-tab-btn" onclick="switchTab('achievements')">🏆 업적</button>
+      <button class="db-tab-btn active" onclick="switchTab('overview')">?뱤 援?? 吏??/button>
+      <button class="db-tab-btn" onclick="switchTab('budget')">?뮯 ?덉궛 & ?몄쑉</button>
+      <button class="db-tab-btn" onclick="switchTab('citizens')">?뫁 援?? 愿由?/button>
+      <button class="db-tab-btn" onclick="switchTab('stocks')">?뱢 二쇱떇 ?쒖옣</button>
+      <button class="db-tab-btn" onclick="switchTab('realestate')">?룧 遺?숈궛</button>
+      <button class="db-tab-btn" onclick="switchTab('laws')">?뱶 踰뺣쪧 & ?대깽??/button>
+      <button class="db-tab-btn" onclick="switchTab('diplomacy')">?쩃 ?멸탳</button>
+      <button class="db-tab-btn" onclick="switchTab('projects')">?룛截?援?콉 ?ъ뾽</button>
+      <button class="db-tab-btn" onclick="switchTab('achievements')">?룇 ?낆쟻</button>
     </div>
 
     <div class="db-body">
@@ -190,50 +193,50 @@
       <div id="tab-overview" class="db-tab-content active">
         <div class="db-grid-4">
           <div class="db-card">
-            <span class="card-icon">💰</span>
-            <div class="card-label">국가 GDP</div>
-            <div class="card-val" id="db-gdp">₦0</div>
+            <span class="card-icon">?뮥</span>
+            <div class="card-label">援?? GDP</div>
+            <div class="card-val" id="db-gdp">??</div>
           </div>
           <div class="db-card">
-            <span class="card-icon">🏦</span>
-            <div class="card-label">국고 잔고</div>
-            <div class="card-val text-green" id="db-treasury">₦0</div>
+            <span class="card-icon">?룱</span>
+            <div class="card-label">援?퀬 ?붽퀬</div>
+            <div class="card-val text-green" id="db-treasury">??</div>
           </div>
           <div class="db-card">
-            <span class="card-icon">🎈</span>
-            <div class="card-label">물가상승률 (인플레)</div>
+            <span class="card-icon">?럥</span>
+            <div class="card-label">臾쇨??곸듅瑜?(?명뵆??</div>
             <div class="card-val text-orange" id="db-inflation">0%</div>
           </div>
           <div class="db-card">
-            <span class="card-icon">📉</span>
-            <div class="card-label">실업률</div>
+            <span class="card-icon">?뱣</span>
+            <div class="card-label">?ㅼ뾽瑜?/div>
             <div class="card-val text-red" id="db-unemployment">0%</div>
           </div>
         </div>
 
         <div class="db-grid-3 mt-16">
           <div class="db-card stat-card">
-            <h4>👥 국민 평균 행복도</h4>
+            <h4>?뫁 援?? ?됯퇏 ?됰났??/h4>
             <div class="progress-bar-container">
               <div class="progress-bar-fill bg-cyan" id="bar-happy" style="width: 50%"></div>
             </div>
             <div class="progress-val" id="val-happy">0%</div>
           </div>
           <div class="db-card stat-card">
-            <h4>❤️ 국민 평균 건강도</h4>
+            <h4>?ㅿ툘 援?? ?됯퇏 嫄닿컯??/h4>
             <div class="progress-bar-container">
               <div class="progress-bar-fill bg-green" id="bar-health" style="width: 50%"></div>
             </div>
             <div class="progress-val" id="val-health">0%</div>
           </div>
           <div class="db-card stat-card">
-            <h4>🚨 사회 범죄율 / 오염도</h4>
+            <h4>?슚 ?ы쉶 踰붿즲??/ ?ㅼ뿼??/h4>
             <div class="stat-row">
-              <span>범죄율:</span>
+              <span>踰붿즲??</span>
               <strong id="val-crime">0%</strong>
             </div>
             <div class="stat-row">
-              <span>환경 오염도:</span>
+              <span>?섍꼍 ?ㅼ뿼??</span>
               <strong id="val-pollution">0%</strong>
             </div>
           </div>
@@ -241,48 +244,48 @@
 
         <div class="db-grid-2 mt-16">
           <div class="db-card">
-            <h4>🏛️ 국가 행정 핵심 정보</h4>
-            <div class="info-row"><span>수도</span><span>세종 디스트릭트</span></div>
-            <div class="info-row"><span>국가 통화</span><span>네오 (₦)</span></div>
-            <div class="info-row"><span>공식 언어</span><span>한국어 / 파이썬</span></div>
-            <div class="info-row"><span>기준 금리</span><span id="info-interest">0%</span></div>
+            <h4>?룢截?援?? ?됱젙 ?듭떖 ?뺣낫</h4>
+            <div class="info-row"><span>?섎룄</span><span>?몄쥌 ?붿뒪?몃┃??/span></div>
+            <div class="info-row"><span>援?? ?듯솕</span><span>?ㅼ삤 (??</span></div>
+            <div class="info-row"><span>怨듭떇 ?몄뼱</span><span>?쒓뎅??/ ?뚯씠??/span></div>
+            <div class="info-row"><span>湲곗? 湲덈━</span><span id="info-interest">0%</span></div>
           </div>
           <div class="db-card">
-            <h4>🚀 과학 기술 & 우주개발</h4>
-            <div class="info-row"><span>기술 혁신 지수</span><span id="info-tech">0</span></div>
-            <div class="info-row"><span>우주 진척도</span><span id="info-space">0%</span></div>
-            <div class="info-row"><span>식량 자급률</span><span id="info-food">0%</span></div>
-            <div class="info-row"><span>스마트 전력망</span><span id="info-power">0%</span></div>
+            <h4>?? 怨쇳븰 湲곗닠 & ?곗＜媛쒕컻</h4>
+            <div class="info-row"><span>湲곗닠 ?곸떊 吏??/span><span id="info-tech">0</span></div>
+            <div class="info-row"><span>?곗＜ 吏꾩쿃??/span><span id="info-space">0%</span></div>
+            <div class="info-row"><span>?앸웾 ?먭툒瑜?/span><span id="info-food">0%</span></div>
+            <div class="info-row"><span>?ㅻ쭏???꾨젰留?/span><span id="info-power">0%</span></div>
           </div>
         </div>
 
-        <!-- 📊 통계 그래프 섹션 -->
+        <!-- ?뱤 ?듦퀎 洹몃옒???뱀뀡 -->
         <div class="db-card mt-16">
-          <h3>📈 국가 지표 추이 그래프 (최근 20틱)</h3>
+          <h3>?뱢 援?? 吏??異붿씠 洹몃옒??(理쒓렐 20??</h3>
           <div class="graphs-row">
             <div class="graph-wrap">
-              <div class="graph-label text-green">GDP 추이</div>
+              <div class="graph-label text-green">GDP 異붿씠</div>
               <canvas id="graph-gdp" width="220" height="80"></canvas>
             </div>
             <div class="graph-wrap">
-              <div class="graph-label text-cyan">행복도 추이</div>
+              <div class="graph-label text-cyan">?됰났??異붿씠</div>
               <canvas id="graph-happy" width="220" height="80"></canvas>
             </div>
             <div class="graph-wrap">
-              <div class="graph-label text-orange">국고 추이</div>
+              <div class="graph-label text-orange">援?퀬 異붿씠</div>
               <canvas id="graph-treasury" width="220" height="80"></canvas>
             </div>
           </div>
         </div>
 
-        <!-- 📣 대통령 연설 -->
+        <!-- ?뱽 ??듬졊 ?곗꽕 -->
         <div class="db-card mt-16">
-          <h3>📣 대통령 연설 (쿨다운: <span id="speech-cooldown-label">준비 완료</span>)</h3>
+          <h3>?뱽 ??듬졊 ?곗꽕 (荑⑤떎?? <span id="speech-cooldown-label">以鍮??꾨즺</span>)</h3>
           <div class="speech-btns">
-            <button class="speech-btn" onclick="doSpeech('economy')">💰 경제 성장 연설<br><small>GDP +2% · 지지율 +5</small></button>
-            <button class="speech-btn" onclick="doSpeech('welfare')">❤️ 복지 강화 연설<br><small>행복도 +8 · 지지율 +6</small></button>
-            <button class="speech-btn" onclick="doSpeech('unity')">🕊️ 국민 통합 연설<br><small>지지율 +10 · 스트레스 감소</small></button>
-            <button class="speech-btn" onclick="doSpeech('tech')">🚀 미래 기술 연설<br><small>기술지수 +15 · GDP +1%</small></button>
+            <button class="speech-btn" onclick="doSpeech('economy')">?뮥 寃쎌젣 ?깆옣 ?곗꽕<br><small>GDP +2% 쨌 吏吏??+5</small></button>
+            <button class="speech-btn" onclick="doSpeech('welfare')">?ㅿ툘 蹂듭? 媛뺥솕 ?곗꽕<br><small>?됰났??+8 쨌 吏吏??+6</small></button>
+            <button class="speech-btn" onclick="doSpeech('unity')">?븡截?援?? ?듯빀 ?곗꽕<br><small>吏吏??+10 쨌 ?ㅽ듃?덉뒪 媛먯냼</small></button>
+            <button class="speech-btn" onclick="doSpeech('tech')">?? 誘몃옒 湲곗닠 ?곗꽕<br><small>湲곗닠吏??+15 쨌 GDP +1%</small></button>
           </div>
         </div>
       </div>
@@ -292,41 +295,65 @@
         <div class="db-grid-2">
           <!-- Tax Sliders -->
           <div class="db-card">
-            <h3>💸 국가 세율 설정</h3>
+            <h3>?뮯 援?? ?몄쑉 ?ㅼ젙</h3>
             <div class="slider-group">
               <div class="slider-header">
-                <label>소득세율</label>
+                <label>?뚮뱷?몄쑉</label>
                 <span id="lbl-tax-income">15%</span>
               </div>
               <input type="range" id="sld-tax-income" min="5" max="50" value="15" oninput="updateTaxRates()">
             </div>
             <div class="slider-group">
               <div class="slider-header">
-                <label>법인세율</label>
+                <label>踰뺤씤?몄쑉</label>
                 <span id="lbl-tax-corporate">10%</span>
               </div>
               <input type="range" id="sld-tax-corporate" min="5" max="40" value="10" oninput="updateTaxRates()">
             </div>
             <div class="slider-group">
               <div class="slider-header">
-                <label>토지보유세율</label>
+                <label>?좎?蹂댁쑀?몄쑉</label>
                 <span id="lbl-tax-property">1%</span>
               </div>
               <input type="range" id="sld-tax-property" min="0" max="10" step="0.5" value="1" oninput="updateTaxRates()">
             </div>
             <div class="alert alert-info">
-              💡 세율을 올리면 재정이 튼튼해지지만, 국민들의 소비 여력이 낮아지고 기업 투자가 저하됩니다.
+              ?뮕 ?몄쑉???щ━硫??ъ젙???쇳듉?댁?吏留? 援???ㅼ쓽 ?뚮퉬 ?щ젰????븘吏怨?湲곗뾽 ?ъ옄媛 ??섎맗?덈떎.
+            </div>
+            <!-- 援?콈 諛쒗뻾 ?⑤꼸 -->
+            <div style="margin-top:16px;">
+              <h3 style="margin-bottom:10px;">?룱 援?콈 諛쒗뻾 & ?곹솚</h3>
+              <div style="background:rgba(255,176,48,0.06);border:1px solid rgba(255,176,48,0.25);border-radius:10px;padding:12px;font-size:12px;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>?뱣 ?꾩옱 援?? 遺梨?/span><strong id="bd-debt" class="text-red">??</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                  <span>?뱟 ???댁옄 遺??/span><strong id="bd-interest" class="text-orange">??</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                  <span>?뱤 遺梨꾨퉬??(GDP ?鍮?</span><strong id="bd-ratio" class="text-cyan">0%</strong>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;margin-bottom:8px;">
+                <select id="bond-amount-select" style="flex:1;background:rgba(0,0,0,0.4);border:1px solid rgba(0,229,255,0.2);border-radius:6px;color:#fff;padding:6px 10px;font-size:12px;">
+                  <option value="100000000000">??,000??(?댁옄??湲곗?湲덈━+1%)</option>
+                  <option value="500000000000">??,000??(?댁옄??湲곗?湲덈━+1.5%)</option>
+                  <option value="1000000000000">??議?(?댁옄??湲곗?湲덈━+2%)</option>
+                </select>
+                <button class="form-btn login-btn" style="white-space:nowrap;font-size:12px;" onclick="issueBond()">?뱢 諛쒗뻾</button>
+              </div>
+              <button class="form-btn register-btn" style="width:100%;font-size:12px;" onclick="repayBond()">?뮯 援?콈 ?쇰? ?곹솚 (援?퀬??10%)</button>
             </div>
           </div>
 
           <!-- Budget Allocations -->
           <div class="db-card scroll-card" style="max-height: 400px;">
-            <h3>📊 부처별 예산 배분비 (%)</h3>
+            <h3>?뱤 遺泥섎퀎 ?덉궛 諛곕텇鍮?(%)</h3>
             <div id="budget-sliders-container">
               <!-- Sliders injected by JS -->
             </div>
             <div class="total-allocation-bar">
-              <span>배분 합계: </span><strong id="budget-allocation-sum">100%</strong>
+              <span>諛곕텇 ?⑷퀎: </span><strong id="budget-allocation-sum">100%</strong>
             </div>
           </div>
         </div>
@@ -335,24 +362,24 @@
       <!-- 3. CITIZENS TAB -->
       <div id="tab-citizens" class="db-tab-content">
         <div class="filter-bar">
-          <input type="text" id="citizen-search" placeholder="국민 이름 검색..." oninput="renderCitizenList()">
-          <span class="citizen-count-label">총 국민 수: 1,000명</span>
+          <input type="text" id="citizen-search" placeholder="援?? ?대쫫 寃??.." oninput="renderCitizenList()">
+          <span class="citizen-count-label">珥?援?? ?? 1,000紐?/span>
         </div>
         <div class="table-wrapper">
           <table class="db-table">
             <thead>
               <tr>
                 <th>ID</th>
-                <th>이름</th>
-                <th>나이</th>
-                <th>성별</th>
-                <th>학력</th>
-                <th>직업</th>
-                <th>월급</th>
-                <th>잔고</th>
-                <th>행복도</th>
-                <th>건강도</th>
-                <th>관리</th>
+                <th>?대쫫</th>
+                <th>?섏씠</th>
+                <th>?깅퀎</th>
+                <th>?숇젰</th>
+                <th>吏곸뾽</th>
+                <th>?붽툒</th>
+                <th>?붽퀬</th>
+                <th>?됰났??/th>
+                <th>嫄닿컯??/th>
+                <th>愿由?/th>
               </tr>
             </thead>
             <tbody id="citizen-table-body">
@@ -360,11 +387,11 @@
             </tbody>
           </table>
         </div>
-        <!-- 국민 청원 패널 -->
+        <!-- 援?? 泥?썝 ?⑤꼸 -->
         <div class="db-card mt-16" id="petition-panel">
-          <h3>📋 국민 청원 목록</h3>
+          <h3>?뱥 援?? 泥?썝 紐⑸줉</h3>
           <div id="petition-list">
-            <div class="log-item empty">접수된 청원이 없습니다.</div>
+            <div class="log-item empty">?묒닔??泥?썝???놁뒿?덈떎.</div>
           </div>
         </div>
       </div>
@@ -373,24 +400,24 @@
       <div id="tab-stocks" class="db-tab-content">
         <div class="db-grid-2 mb-12">
           <div class="db-card mini-card">
-            <span>대통령 개인 자산</span>
-            <strong id="player-cash">₦500,000</strong>
+            <span>??듬졊 媛쒖씤 ?먯궛</span>
+            <strong id="player-cash">??00,000</strong>
           </div>
           <div class="db-card mini-card">
-            <span>국고 잔고</span>
-            <strong id="treasury-cash">₦5,000,000,000</strong>
+            <span>援?퀬 ?붽퀬</span>
+            <strong id="treasury-cash">??,000,000,000</strong>
           </div>
         </div>
         <div class="table-wrapper">
           <table class="db-table">
             <thead>
               <tr>
-                <th>코드</th>
-                <th>종목명</th>
-                <th>유형</th>
-                <th>현재가</th>
-                <th>변동</th>
-                <th>거래</th>
+                <th>肄붾뱶</th>
+                <th>醫낅ぉ紐?/th>
+                <th>?좏삎</th>
+                <th>?꾩옱媛</th>
+                <th>蹂??/th>
+                <th>嫄곕옒</th>
               </tr>
             </thead>
             <tbody id="stock-table-body">
@@ -411,79 +438,79 @@
       <div id="tab-diplomacy" class="db-tab-content">
         <div class="db-grid-4 mb-12">
           <div class="db-card mini-card">
-            <span>🌐 외교 국가 수</span><strong>5개국</strong>
+            <span>?뙋 ?멸탳 援?? ??/span><strong>5媛쒓뎅</strong>
           </div>
           <div class="db-card mini-card">
-            <span>🤝 평균 관계도</span><strong id="diplo-avg">0%</strong>
+            <span>?쩃 ?됯퇏 愿怨꾨룄</span><strong id="diplo-avg">0%</strong>
           </div>
           <div class="db-card mini-card">
-            <span>📦 총 무역량</span><strong id="diplo-trade">0억</strong>
+            <span>?벀 珥?臾댁뿭??/span><strong id="diplo-trade">0??/strong>
           </div>
           <div class="db-card mini-card">
-            <span>⚠️ 외교 위기</span><strong id="diplo-crisis" class="text-red">0건</strong>
+            <span>?좑툘 ?멸탳 ?꾧린</span><strong id="diplo-crisis" class="text-red">0嫄?/strong>
           </div>
         </div>
         <div id="diplomacy-countries-container" class="db-grid-3 mt-12">
-          <!-- JS가 동적으로 생성 -->
+          <!-- JS媛 ?숈쟻?쇰줈 ?앹꽦 -->
         </div>
       </div>
 
-      <!-- 6. LAWS TAB — 종합 입법 시스템 -->
+      <!-- 6. LAWS TAB ??醫낇빀 ?낅쾿 ?쒖뒪??-->
       <div id="tab-laws" class="db-tab-content">
 
-        <!-- 법률 통계 상단 바 -->
+        <!-- 踰뺣쪧 ?듦퀎 ?곷떒 諛?-->
         <div class="db-grid-4 mb-12">
           <div class="db-card mini-card">
-            <span>📜 전체 법률</span>
+            <span>?뱶 ?꾩껜 踰뺣쪧</span>
             <strong id="law-total-count">0</strong>
           </div>
           <div class="db-card mini-card">
-            <span>✅ 시행 중</span>
+            <span>???쒗뻾 以?/span>
             <strong id="law-active-count" class="text-green">0</strong>
           </div>
           <div class="db-card mini-card">
-            <span>💰 월 유지비</span>
-            <strong id="law-monthly-cost" class="text-orange">₦0</strong>
+            <span>?뮥 ???좎?鍮?/span>
+            <strong id="law-monthly-cost" class="text-orange">??</strong>
           </div>
           <div class="db-card mini-card">
-            <span>📊 국민 지지율</span>
+            <span>?뱤 援?? 吏吏??/span>
             <strong id="law-approval" class="text-cyan">0%</strong>
           </div>
         </div>
 
-        <!-- 카테고리 필터 -->
+        <!-- 移댄뀒怨좊━ ?꾪꽣 -->
         <div class="law-category-bar">
-          <button class="law-cat-btn active" onclick="filterLaws('all')">📋 전체</button>
-          <button class="law-cat-btn" onclick="filterLaws('economy')">💰 경제</button>
-          <button class="law-cat-btn" onclick="filterLaws('labor')">👷 노동</button>
-          <button class="law-cat-btn" onclick="filterLaws('welfare')">🏥 복지</button>
-          <button class="law-cat-btn" onclick="filterLaws('security')">🚔 치안</button>
-          <button class="law-cat-btn" onclick="filterLaws('environment')">🌿 환경</button>
-          <button class="law-cat-btn" onclick="filterLaws('education')">📚 교육</button>
-          <button class="law-cat-btn" onclick="filterLaws('diplomacy')">🌐 외교</button>
+          <button class="law-cat-btn active" onclick="filterLaws('all')">?뱥 ?꾩껜</button>
+          <button class="law-cat-btn" onclick="filterLaws('economy')">?뮥 寃쎌젣</button>
+          <button class="law-cat-btn" onclick="filterLaws('labor')">?뫕 ?몃룞</button>
+          <button class="law-cat-btn" onclick="filterLaws('welfare')">?룯 蹂듭?</button>
+          <button class="law-cat-btn" onclick="filterLaws('security')">?슂 移섏븞</button>
+          <button class="law-cat-btn" onclick="filterLaws('environment')">?뙼 ?섍꼍</button>
+          <button class="law-cat-btn" onclick="filterLaws('education')">?뱴 援먯쑁</button>
+          <button class="law-cat-btn" onclick="filterLaws('diplomacy')">?뙋 ?멸탳</button>
         </div>
 
-        <!-- 법률 카드 리스트 -->
+        <!-- 踰뺣쪧 移대뱶 由ъ뒪??-->
         <div class="db-grid-2 mt-12">
-          <!-- 왼쪽: 법률 목록 -->
+          <!-- ?쇱そ: 踰뺣쪧 紐⑸줉 -->
           <div class="db-card scroll-card" style="max-height:520px;">
-            <h3>⚖️ 법률 제정 / 폐지</h3>
+            <h3>?뽳툘 踰뺣쪧 ?쒖젙 / ?먯?</h3>
             <div id="law-list-container">
-              <!-- JS가 동적으로 생성 -->
+              <!-- JS媛 ?숈쟻?쇰줈 ?앹꽦 -->
             </div>
           </div>
-          <!-- 오른쪽: 시행 중인 법률 + 이벤트 로그 -->
+          <!-- ?ㅻⅨ履? ?쒗뻾 以묒씤 踰뺣쪧 + ?대깽??濡쒓렇 -->
           <div style="display:flex;flex-direction:column;gap:12px;">
             <div class="db-card scroll-card" style="max-height:250px;">
-              <h3>✅ 현재 시행 중인 법률</h3>
+              <h3>???꾩옱 ?쒗뻾 以묒씤 踰뺣쪧</h3>
               <div id="active-laws-container">
-                <div class="log-item empty">시행 중인 법률이 없습니다.</div>
+                <div class="log-item empty">?쒗뻾 以묒씤 踰뺣쪧???놁뒿?덈떎.</div>
               </div>
             </div>
             <div class="db-card scroll-card" style="max-height:250px;">
-              <h3>🚨 실시간 사건 사고 & 이벤트 로그</h3>
+              <h3>?슚 ?ㅼ떆媛??ш굔 ?ш퀬 & ?대깽??濡쒓렇</h3>
               <div id="event-logs-container" class="event-logs">
-                <div class="log-item empty">아직 보고된 긴급 대시보드 리포트가 없습니다.</div>
+                <div class="log-item empty">?꾩쭅 蹂닿퀬??湲닿툒 ??쒕낫??由ы룷?멸? ?놁뒿?덈떎.</div>
               </div>
             </div>
           </div>
@@ -493,74 +520,75 @@
       <!-- 8. PROJECTS TAB -->
       <div id="tab-projects" class="db-tab-content">
         <div class="db-grid-4 mb-12">
-          <div class="db-card mini-card"><span>🏗️ 진행 중 사업</span><strong id="proj-active-count" class="text-cyan">0건</strong></div>
-          <div class="db-card mini-card"><span>✅ 완공 사업</span><strong id="proj-done-count" class="text-green">0건</strong></div>
-          <div class="db-card mini-card"><span>💸 총 투자액</span><strong id="proj-total-cost" class="text-orange">₦0</strong></div>
-          <div class="db-card mini-card"><span>⏳ 다음 완공</span><strong id="proj-next-finish">-</strong></div>
+          <div class="db-card mini-card"><span>?룛截?吏꾪뻾 以??ъ뾽</span><strong id="proj-active-count" class="text-cyan">0嫄?/strong></div>
+          <div class="db-card mini-card"><span>???꾧났 ?ъ뾽</span><strong id="proj-done-count" class="text-green">0嫄?/strong></div>
+          <div class="db-card mini-card"><span>?뮯 珥??ъ옄??/span><strong id="proj-total-cost" class="text-orange">??</strong></div>
+          <div class="db-card mini-card"><span>???ㅼ쓬 ?꾧났</span><strong id="proj-next-finish">-</strong></div>
         </div>
         <div class="db-grid-2 mt-12" id="projects-container">
-          <!-- JS가 동적으로 생성 -->
+          <!-- JS媛 ?숈쟻?쇰줈 ?앹꽦 -->
         </div>
       </div>
 
       <!-- 9. ACHIEVEMENTS TAB -->
       <div id="tab-achievements" class="db-tab-content">
         <div class="db-card mb-12" style="text-align:center;">
-          <h3>🏆 대통령 업적 — 달성 현황: <span id="ach-count" class="text-green">0</span> / <span id="ach-total">0</span></h3>
+          <h3>?룇 ??듬졊 ?낆쟻 ???ъ꽦 ?꾪솴: <span id="ach-count" class="text-green">0</span> / <span id="ach-total">0</span></h3>
         </div>
         <div class="db-grid-3" id="achievements-container">
-          <!-- JS가 동적으로 생성 -->
+          <!-- JS媛 ?숈쟻?쇰줈 ?앹꽦 -->
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Court Name-Change Dialog (법원 개명 절차) -->
+  <!-- Court Name-Change Dialog (踰뺤썝 媛쒕챸 ?덉감) -->
   <div id="court-dialog" class="glass-panel modal-panel">
-    <h3>⚖️ 네오이현 사법 재판소</h3>
-    <p>국민의 법적 개명 요청 서류입니다. (개명 심리 수수료: <strong>₦50,000</strong>)</p>
+    <h3>?뽳툘 ?ㅼ삤?댄쁽 ?щ쾿 ?ы뙋??/h3>
+    <p>援????踰뺤쟻 媛쒕챸 ?붿껌 ?쒕쪟?낅땲?? (媛쒕챸 ?щ━ ?섏닔猷? <strong>??0,000</strong>)</p>
     <div class="input-group">
-      <label>기존 성명</label>
+      <label>湲곗〈 ?깅챸</label>
       <input type="text" id="court-old-name" readonly>
     </div>
     <div class="input-group">
-      <label>새로운 성명</label>
-      <input type="text" id="court-new-name" placeholder="새로운 성명을 입력해 주세요...">
+      <label>?덈줈???깅챸</label>
+      <input type="text" id="court-new-name" placeholder="?덈줈???깅챸???낅젰??二쇱꽭??..">
     </div>
     <div class="btn-group">
-      <button class="form-btn login-btn" onclick="submitNameChange()">승인 및 개명 판결</button>
-      <button class="form-btn register-btn" onclick="closeCourt()">서류 반려</button>
+      <button class="form-btn login-btn" onclick="submitNameChange()">?뱀씤 諛?媛쒕챸 ?먭껐</button>
+      <button class="form-btn register-btn" onclick="closeCourt()">?쒕쪟 諛섎젮</button>
     </div>
   </div>
 
   <!-- HUD floating Dashboard Toggle button -->
-  <button id="dashboard-toggle-btn" class="glass-panel" onclick="toggleDashboard(true)">🏛️ 대통령 집무실 (Tab)</button>
+  <button id="dashboard-toggle-btn" class="glass-panel" onclick="toggleDashboard(true)">?룢截???듬졊 吏묐Т??(Tab)</button>
+  <button id="job-center-btn" class="glass-panel" onclick="openJobModal()" style="position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:100;padding:8px 18px;font-size:13px;cursor:pointer;">?뮳 <span id="job-btn-label">吏곸뾽 ?쇳꽣</span></button>
 
   <!-- 3D Citizen Hover Tooltip -->
   <div id="citizen-tooltip" class="glass-panel" style="display: none; position: fixed; pointer-events: none; padding: 12px; font-size: 11px; z-index: 200;">
     <!-- Filled dynamically by JavaScript -->
   </div>
 
-  <!-- 🛗 엘리베이터 조작 모달 -->
+  <!-- ?썤 ?섎━踰좎씠??議곗옉 紐⑤떖 -->
   <div id="elevator-modal" class="glass-panel modal-panel" style="display:none; text-align:center;">
-    <h3>🛗 엘리베이터 콘솔</h3>
+    <h3>?썤 ?섎━踰좎씠??肄섏넄</h3>
     <div class="elevator-screen">
       <div class="floor-indicator" id="elevator-indicator">1F</div>
-      <div class="status-indicator" id="elevator-status">대기 중</div>
+      <div class="status-indicator" id="elevator-status">?湲?以?/div>
     </div>
     <div class="elevator-buttons" id="elevator-floor-buttons">
-      <!-- 동적으로 버튼 생성 -->
+      <!-- ?숈쟻?쇰줈 踰꾪듉 ?앹꽦 -->
     </div>
-    <button class="form-btn register-btn" style="margin-top:15px; width:100%;" onclick="closeElevatorModal()">닫기</button>
+    <button class="form-btn register-btn" style="margin-top:15px; width:100%;" onclick="closeElevatorModal()">?リ린</button>
   </div>
 
-  <!-- 📚 학교 공부 모달 -->
+  <!-- ?뱴 ?숆탳 怨듬? 紐⑤떖 -->
   <div id="study-modal" class="glass-panel modal-panel" style="display:none;">
     <div class="db-header">
       <div class="db-title-group">
-        <span class="db-icon">🎓</span>
+        <span class="db-icon">?럳</span>
         <div>
-          <h2 id="study-modal-title">네오리아 국립대 자습실</h2>
+          <h2 id="study-modal-title">?ㅼ삤由ъ븘 援?┰? ?먯뒿??/h2>
           <p class="db-subtitle">Study & Academic Development</p>
         </div>
       </div>
@@ -568,56 +596,565 @@
     </div>
     <div class="study-body" style="padding:15px 0; color:#fff;">
       <div class="study-stats" style="margin-bottom:15px; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
-        <div>📚 현재 지식 수준: <strong class="text-cyan" id="study-knowledge-val">0</strong></div>
-        <div style="margin-top:5px;">🎓 취득한 학위: <strong class="text-green" id="study-diploma-val">없음 (고졸)</strong></div>
+        <div>?뱴 ?꾩옱 吏???섏?: <strong class="text-cyan" id="study-knowledge-val">0</strong></div>
+        <div style="margin-top:5px;">?럳 痍⑤뱷???숈쐞: <strong class="text-green" id="study-diploma-val">?놁쓬 (怨좎「)</strong></div>
       </div>
       <div style="display:flex; flex-direction:column; gap:10px;">
         <button class="form-btn login-btn" style="width:100%; text-align:left; justify-content:space-between; display:flex;" onclick="performStudyAction('self')">
-          <span>📖 집중 자습 (에너지 -10, 지식 +5)</span>
-          <span class="text-orange">무료</span>
+          <span>?뱰 吏묒쨷 ?먯뒿 (?먮꼫吏 -10, 吏??+5)</span>
+          <span class="text-orange">臾대즺</span>
         </button>
         <button class="form-btn login-btn" style="width:100%; text-align:left; justify-content:space-between; display:flex;" onclick="performStudyAction('lecture')">
-          <span>👩‍🏫 대학교 전공 강의 (에너지 -20, 지식 +12)</span>
-          <span class="text-orange">₦15,000</span>
+          <span>?뫆?랅윆???숆탳 ?꾧났 媛뺤쓽 (?먮꼫吏 -20, 吏??+12)</span>
+          <span class="text-orange">??5,000</span>
         </button>
         <button class="form-btn login-btn" style="width:100%; text-align:left; justify-content:space-between; display:flex;" onclick="performStudyAction('library')">
-          <span>📚 도서관 학술지 독서 (에너지 -15, 지식 +8)</span>
-          <span class="text-orange">₦5,000</span>
+          <span>?뱴 ?꾩꽌愿 ?숈닠吏 ?낆꽌 (?먮꼫吏 -15, 吏??+8)</span>
+          <span class="text-orange">??,000</span>
         </button>
         <div style="height:1px; background:rgba(255,255,255,0.1); margin:8px 0;"></div>
         <button class="form-btn" style="width:100%; background:rgba(168,85,247,0.2); border-color:rgba(168,85,247,0.5); color:#c084fc; text-align:left; justify-content:space-between; display:flex;" onclick="takeExam()">
-          <span>🎓 학위 취득 시험 (지식 100 이상 필요)</span>
-          <span class="text-cyan">₦50,000</span>
+          <span>?럳 ?숈쐞 痍⑤뱷 ?쒗뿕 (吏??100 ?댁긽 ?꾩슂)</span>
+          <span class="text-cyan">??0,000</span>
         </button>
       </div>
       <div id="study-result-msg" style="margin-top:15px; text-align:center; font-weight:600;" class="text-green"></div>
     </div>
   </div>
 
-  <!-- 🛌 수면/오버레이 애니메이션 -->
+  <!-- ?썙 ?섎㈃/?ㅻ쾭?덉씠 ?좊땲硫붿씠??-->
   <div id="sleep-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; z-index:9999; flex-direction:column; justify-content:center; align-items:center; color:#fff; transition: opacity 1s ease;">
-    <div style="font-size:48px; margin-bottom:20px;">🛌 Zzz...</div>
-    <div style="font-size:20px; font-weight:600;" id="sleep-time-msg">하루의 피로를 풀고 있습니다...</div>
+    <div style="font-size:48px; margin-bottom:20px;">?썙 Zzz...</div>
+    <div style="font-size:20px; font-weight:600;" id="sleep-time-msg">?섎（???쇰줈瑜??怨??덉뒿?덈떎...</div>
   </div>
 
-  <!-- 🚪 실내 HUD 안내 패널 -->
+  <!-- ?슞 ?ㅻ궡 HUD ?덈궡 ?⑤꼸 -->
   <div id="interior-hud" class="glass-panel" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); padding:12px 24px; border-radius:12px; font-size:14px; color:#fff; align-items:center; gap:20px; z-index:100; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
     <div style="display:flex; align-items:center; gap:8px;">
-      <span style="font-size:18px;" id="interior-icon">🏢</span>
-      <strong id="interior-name">네오리아 아파트</strong>
-      <span class="text-cyan" id="interior-floor-label">3층 (302호)</span>
+      <span style="font-size:18px;" id="interior-icon">?룫</span>
+      <strong id="interior-name">?ㅼ삤由ъ븘 ?꾪뙆??/strong>
+      <span class="text-cyan" id="interior-floor-label">3痢?(302??</span>
     </div>
     <div style="width:1px; height:20px; background:rgba(255,255,255,0.2);"></div>
     <div style="display:flex; gap:10px;">
-      <button class="form-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.15);" id="interior-stairs-up-btn" onclick="useStairs('up')">🪜 위층으로</button>
-      <button class="form-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.15);" id="interior-stairs-down-btn" onclick="useStairs('down')">🪜 아래층으로</button>
-      <button class="form-btn register-btn" style="padding:4px 10px; font-size:12px;" onclick="exitCurrentBuilding()">🚪 건물 나가기 (ESC)</button>
+      <button class="form-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.15);" id="interior-stairs-up-btn" onclick="useStairs('up')">?첏 ?꾩링?쇰줈</button>
+      <button class="form-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.15);" id="interior-stairs-down-btn" onclick="useStairs('down')">?첏 ?꾨옒痢듭쑝濡?/button>
+      <button class="form-btn register-btn" style="padding:4px 10px; font-size:12px;" onclick="exitCurrentBuilding()">?슞 嫄대Ъ ?섍?湲?(ESC)</button>
+    </div>
+  </div>
+
+  <!-- ?뫁 NPC ????곹샇?묒슜 紐⑤떖 -->
+  <div id="npc-dialog-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-content glass-panel" style="max-width:480px; border:1px solid rgba(255,255,255,0.15);">
+      <div class="modal-header" style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+        <h3 id="npc-modal-title">?뫁 援??怨쇱쓽 ?뚰넻</h3>
+        <button class="close-btn" onclick="closeNpcDialog()">&times;</button>
+      </div>
+      <div class="modal-body" style="padding:20px 0;">
+        <div id="npc-profile-box" style="display:flex; flex-direction:column; gap:12px; background:rgba(255,255,255,0.03); padding:16px; border-radius:12px; border:1px solid rgba(255,255,255,0.05); margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong style="font-size:18px; color:var(--cyan);" id="npc-name">諛뺤???/strong>
+            <span id="npc-age-gender" style="font-size:12px; color:var(--text-dim);">28??쨌 ?⑥꽦</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:13px;">
+            <div>?뮳 吏곸뾽: <span id="npc-job" style="color:#fff;">?뚯궗??/span></div>
+            <div>?삃 湲곕텇: <span id="npc-mood" style="color:var(--green);">?삃 ?됰났 (85%)</span></div>
+            <div>?뱤 ?깊뼢: <span id="npc-stance" style="color:var(--gold);">蹂댁닔??쨌 洹쇰줈??/span></div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span>狩??멸컧??</span>
+              <div style="width:120px; height:12px; background:rgba(255,255,255,0.1); border-radius:6px; overflow:hidden;">
+                <div id="npc-affinity-fill" style="width:50%; height:100%; background:linear-gradient(90deg, #ff4560, #ff007f); transition: width 0.3s ease;"></div>
+              </div>
+              <span id="npc-affinity-val" style="font-weight:700; color:#ff4560;">50%</span>
+            </div>
+          </div>
+        </div>
+        <div id="npc-dialogue-text" style="font-size:14px; line-height:1.6; margin-bottom:20px; padding:12px; background:rgba(0,0,0,0.2); border-radius:8px; min-height:60px; color:#ddd; font-style:italic;">
+          "?덈뀞?섏꽭?? ??듬졊?? ?ㅼ삤?대━?ㅼ쓽 誘몃옒?????留먯? ?섎늻怨??띠뒿?덈떎."
+        </div>
+        <div id="npc-options-box" style="display:flex; flex-direction:column; gap:10px;">
+          <!-- ???踰꾪듉?ㅼ씠 ?ш린???ㅼ뼱??-->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ?뮳 吏곸뾽 李얘린 紐⑤떖 -->
+  <div id="job-modal" class="glass-panel modal-panel" style="display:none;">
+    <div class="db-header">
+      <div class="db-title-group">
+        <span class="db-icon">?뮳</span>
+        <div>
+          <h2>??듬졊 媛쒖씤 吏곸뾽 ?쇳꽣</h2>
+          <p class="db-subtitle">Neo-LeeHyeon Job Center</p>
+        </div>
+      </div>
+      <button onclick="closeJobModal()" class="close-db-btn">&times;</button>
+    </div>
+    <div style="padding:12px 0;">
+      <div id="job-current-status" style="background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.18);border-radius:10px;padding:14px 18px;margin-bottom:14px;font-size:13px;">
+        <div>?뮳 ?꾩옱 吏곸뾽: <strong id="job-current-name" class="text-cyan">?놁쓬 (?ㅼ쭅??</strong></div>
+        <div style="margin-top:6px;">?뮥 ?붽툒: <strong id="job-current-salary" class="text-green">??</strong> &nbsp;|&nbsp; ?뱟 ?ъ쭅?? <strong id="job-tenure-days">0??/strong> &nbsp;|&nbsp; 狩?吏곴툒: <strong id="job-current-tier" class="text-gold">-</strong></div>
+        <div style="margin-top:6px;" id="job-promotion-row" style="display:none;">
+          <div style="height:6px;background:rgba(255,255,255,0.08);border-radius:3px;margin-top:6px;overflow:hidden;">
+            <div id="job-promo-bar" style="height:100%;background:linear-gradient(90deg,#a855f7,#00c8ff);width:0%;transition:width 0.5s;border-radius:3px;"></div>
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">?뱀쭊 吏꾪뻾??<span id="job-promo-pct">0%</span></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button class="form-btn login-btn" style="flex:1;" onclick="playerWorkShift()">?깍툘 洹쇰Т?섍린 (?먮꼫吏 -15, ?붽툒???쇰? 利됱떆 ?섎졊)</button>
+        <button class="form-btn register-btn" style="flex:1;" onclick="playerQuitJob()">?슞 ?ъ쭅???쒖텧</button>
+      </div>
+      <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">?뱥 梨꾩슜 怨듦퀬 (吏곸뾽???좏깮?섏꽭??</div>
+      <div id="job-listings" style="display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <!-- ?슚 ?щ궃 ?대깽??紐⑤떖 -->
+  <div id="disaster-modal" class="glass-panel modal-panel" style="display:none;border-color:rgba(255,69,96,0.5);box-shadow:0 0 40px rgba(255,69,96,0.3);">
+    <div style="text-align:center;padding:8px 0 16px;">
+      <div id="disaster-icon" style="font-size:56px;margin-bottom:8px;">?슚</div>
+      <h2 id="disaster-title" style="color:#ff4560;font-size:20px;margin-bottom:6px;">湲닿툒 ?щ궃 寃쎈낫</h2>
+      <p id="disaster-desc" style="color:var(--text-dim);font-size:13px;line-height:1.6;max-width:400px;margin:0 auto 18px;"></p>
+      <div style="background:rgba(255,69,96,0.08);border:1px solid rgba(255,69,96,0.25);border-radius:10px;padding:12px;margin-bottom:18px;font-size:12px;" id="disaster-impact">
+      </div>
+      <div id="disaster-options" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+  </div>
+
+  <!-- 援?콈 諛쒗뻾? ??쒕낫??budget ??뿉 異붽? -->
+
+  <!-- ?썳截?愿由ъ옄 ?⑤꼸 (ree1203 ?꾩슜) -->
+  <div id="admin-toggle-btn" style="display:none;" onclick="toggleAdminPanel()">?썳截?愿由ъ옄</div>
+
+  <div id="admin-panel" class="glass-panel" style="display:none;">
+    <div class="admin-header">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:20px;">?썳截?/span>
+        <div>
+          <h3 style="margin:0;color:#ff4560;">愿由ъ옄 ?⑤꼸</h3>
+          <p style="margin:0;font-size:11px;color:var(--text-dim);">ree1203 ?꾩슜 ??ADMIN ONLY</p>
+        </div>
+      </div>
+      <button class="close-db-btn" onclick="toggleAdminPanel()">&times;</button>
+    </div>
+
+    <div class="admin-tabs">
+      <button class="admin-tab-btn active" onclick="switchAdminTab('modes')">?숋툘 紐⑤뱶</button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('players')">?뫁 ?뚮젅?댁뼱</button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('citizens')">?お 援??</button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('events')">?럦 ?대깽??/button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('control')">?슚 ?듭젣</button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('server')">?뼢截??쒕쾭</button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('logs')">?뱥 濡쒓렇</button>
+    </div>
+
+    <!-- 紐⑤뱶 ??-->
+    <div id="admin-tab-modes" class="admin-tab-content active">
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?썳截?/span>
+          <div>
+            <div class="admin-toggle-name">臾댁쟻 紐⑤뱶</div>
+            <div class="admin-toggle-desc">泥대젰쨌諛곌퀬?붋룹뿉?덉? 媛먯냼 ?놁쓬</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-godmode" onchange="adminToggle('godmode',this.checked)">
+          <span class="admin-slider"></span>
+        </label>
+      </div>
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?뫛</span>
+          <div>
+            <div class="admin-toggle-name">?щ챸 紐⑤뱶</div>
+            <div class="admin-toggle-desc">?ㅻⅨ ?뚮젅?댁뼱?먭쾶 蹂댁씠吏 ?딆쓬</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-invisible" onchange="adminToggle('invisible',this.checked)">
+          <span class="admin-slider"></span>
+        </label>
+      </div>
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?쫭</span>
+          <div>
+            <div class="admin-toggle-name">?먯쑀 鍮꾪뻾</div>
+            <div class="admin-toggle-desc">Q/E濡??섏쭅 ?대룞, 異⑸룎 臾댁떆</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-fly" onchange="adminToggle('fly',this.checked)">
+          <span class="admin-slider"></span>
+        </label>
+      </div>
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">??</span>
+          <div>
+            <div class="admin-toggle-name">?쒓컙?대룞 紐⑤뱶</div>
+            <div class="admin-toggle-desc">誘몃땲留??대┃ ???대떦 ?꾩튂濡?利됱떆 ?대룞</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-tpmode" onchange="adminToggle('tpmode',this.checked)">
+          <span class="admin-slider"></span>
+        </label>
+      </div>
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?렚</span>
+          <div>
+            <div class="admin-toggle-name">蹂??紐⑤뱶</div>
+            <div class="admin-toggle-desc">?ㅻⅨ ?좎? ?대쫫?쇰줈 ?꾩옣</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-disguise" onchange="adminToggle('disguise',this.checked)">
+          <span class="admin-slider"></span>
+        </label>
+      </div>
+      <div id="admin-disguise-row" style="display:none;margin-bottom:8px;">
+        <div style="display:flex;gap:6px;">
+          <input type="text" id="admin-disguise-name" placeholder="?꾩옣???좎?紐?.." class="admin-input" style="flex:1;">
+          <button class="admin-btn admin-btn-cyan" onclick="adminApplyDisguise()">?곸슜</button>
+        </div>
+      </div>
+      <div class="admin-status-bar" id="admin-mode-status">?쒖꽦 紐⑤뱶 ?놁쓬</div>
+    </div>
+
+    <!-- ?뚮젅?댁뼱 ??-->
+    <div id="admin-tab-players" class="admin-tab-content">
+      <div class="admin-section-title">???쒓컙?대룞</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <input type="text" id="admin-tp-x" placeholder="X 醫뚰몴" class="admin-input" style="flex:1;">
+        <input type="text" id="admin-tp-y" placeholder="Y 醫뚰몴" class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-cyan" onclick="adminTeleport()">?대룞</button>
+      </div>
+      <div class="admin-section-title">?몓截??⑤씪???뚮젅?댁뼱</div>
+      <div id="admin-player-list" style="max-height:180px;overflow-y:auto;">
+        <div style="color:var(--text-dim);font-size:12px;padding:8px;">?뚮젅?댁뼱 紐⑸줉 濡쒕뵫 以?..</div>
+      </div>
+      <div class="admin-section-title" style="margin-top:10px;">?? 愿?????/div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input type="text" id="admin-spectate-input" placeholder="?좎?紐??낅젰..." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-cyan" onclick="adminStartSpectate()">愿??/button>
+        <button class="admin-btn admin-btn-red" onclick="adminStopSpectate()">以묒?</button>
+      </div>
+      <div id="admin-spectate-status" style="font-size:11px;color:var(--text-dim);margin-top:6px;">愿??以??꾨떂</div>
+      <div class="admin-section-title" style="margin-top:10px;">?㎠ ?뚮젅?댁뼱 ?뚰솚</div>
+      <div style="display:flex;gap:8px;margin-bottom:6px;">
+        <input type="text" id="admin-summon-input" placeholder="?뚰솚???좎?紐?.." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-cyan" onclick="adminSummonPlayer()">?뚰솚</button>
+      </div>
+      <div id="admin-summon-status" style="font-size:11px;color:var(--text-dim);">??/div>
+      <div class="admin-section-title" style="margin-top:10px;">?쳶 ?뚮젅?댁뼱 怨좎젙</div>
+      <div style="display:flex;gap:8px;margin-bottom:6px;">
+        <input type="text" id="admin-freeze-input" placeholder="怨좎젙???좎?紐?.." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-red"  onclick="adminFreezePlayer()">?뵏 怨좎젙</button>
+        <button class="admin-btn admin-btn-cyan" onclick="adminUnfreezePlayer()">?뵑 ?댁젣</button>
+      </div>
+      <div id="admin-freeze-status" style="font-size:11px;color:var(--text-dim);">怨좎젙???뚮젅?댁뼱 ?놁쓬</div>
+    </div>
+
+    <!-- ?쒕쾭 ??-->
+    <div id="admin-tab-server" class="admin-tab-content">
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?뵏</span>
+          <div>
+            <div class="admin-toggle-name">?쒕쾭 ?좉툑</div>
+            <div class="admin-toggle-desc">?좉퇋 濡쒓렇??李⑤떒</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-serverlock" onchange="adminToggle('serverlock',this.checked)">
+          <span class="admin-slider red-slider"></span>
+        </label>
+      </div>
+      <div class="admin-section-title" style="margin-top:12px;">?뱼 ?꾩껜 怨듭?</div>
+      <textarea id="admin-notice-input" class="admin-input" rows="3" placeholder="?꾩껜 怨듭? ?댁슜???낅젰?섏꽭??.." style="width:100%;resize:vertical;"></textarea>
+      <button class="admin-btn admin-btn-cyan" style="width:100%;margin-top:6px;" onclick="adminSendNotice()">?뱼 ?꾩껜 怨듭? ?꾩넚</button>
+      <div class="admin-section-title" style="margin-top:12px;">?뮠 ?꾩껜 梨꾪똿 硫붿떆吏</div>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="admin-chat-input" placeholder="梨꾪똿 硫붿떆吏..." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-cyan" onclick="adminSendChat()">?꾩넚</button>
+      </div>
+      <div class="admin-section-title" style="margin-top:12px;">?뙋 湲곌린 李⑤떒</div>
+      <div style="display:flex;gap:6px;margin-bottom:4px;">
+        <input type="text" id="admin-ip-input" placeholder="李⑤떒???좎?紐?(湲곌린 ?앸퀎)..." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-red"  onclick="adminBanDevice()">?슟 李⑤떒</button>
+        <button class="admin-btn admin-btn-cyan" onclick="adminUnbanDevice()">???댁젣</button>
+      </div>
+      <div id="admin-ip-list" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">李⑤떒??湲곌린 ?놁쓬</div>
+      <div class="admin-section-title">?뿳截?湲닿툒 ?ы몴</div>
+      <input type="text" id="admin-vote-question" placeholder="?ы몴 吏덈Ц..." class="admin-input" style="width:100%;margin-bottom:4px;">
+      <div style="display:flex;gap:6px;margin-bottom:4px;">
+        <input type="text" id="admin-vote-opt1" placeholder="?좏깮吏 1" class="admin-input" style="flex:1;">
+        <input type="text" id="admin-vote-opt2" placeholder="?좏깮吏 2" class="admin-input" style="flex:1;">
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="number" id="admin-vote-duration" placeholder="?ы몴 ?쒓컙(珥?" class="admin-input" style="flex:1;" value="60">
+        <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminStartVote()">?뿳截??ы몴 ?쒖옉</button>
+        <button class="admin-btn admin-btn-red" onclick="adminEndVote()">?뱄툘 醫낅즺</button>
+      </div>
+      <div id="admin-vote-result" style="font-size:11px;color:var(--text-dim);padding:6px;background:rgba(0,0,0,0.2);border-radius:6px;margin-bottom:8px;">?ы몴 ?놁쓬</div>
+      <div class="admin-section-title">?뱷 愿由ъ옄 硫붾え??/div>
+      <textarea id="admin-memo-input" class="admin-input" rows="4" placeholder="硫붾え瑜??낅젰?섏꽭??.. (?먮룞 ???" style="width:100%;resize:vertical;margin-bottom:4px;" oninput="adminMemoAutoSave()"></textarea>
+      <div style="display:flex;gap:6px;">
+        <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminMemoLoad()">?뱛 遺덈윭?ㅺ린</button>
+        <button class="admin-btn admin-btn-red"  style="flex:1;" onclick="adminMemoClear()">?뿊截???젣</button>
+      </div>
+      <div id="admin-memo-status" style="font-size:10px;color:var(--text-dim);margin-top:4px;">??/div>
+      <div class="admin-section-title" style="margin-top:12px;">?봽 ?쒕쾭 紐낅졊</div>
+      <button class="admin-btn admin-btn-red" style="width:100%;margin-top:4px;" onclick="adminRestart()">?봽 ?쒕쾭 ?곹깭 珥덇린??/button>
+    </div>
+
+    <!-- 援?? ??-->
+    <div id="admin-tab-citizens" class="admin-tab-content">
+
+      <!-- 寃??諛?-->
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <input type="text" id="admin-citizen-search" placeholder="?좎?紐?寃??.." class="admin-input" style="flex:1;" oninput="adminCitizenSearch()">
+        <button class="admin-btn admin-btn-cyan" onclick="adminCitizenSearch()">?뵇</button>
+      </div>
+      <div id="admin-citizen-result" style="font-size:12px;margin-bottom:10px;padding:8px;background:rgba(0,0,0,0.2);border-radius:7px;min-height:36px;color:var(--text-dim);">?좎?紐낆쓣 寃?됲븯?몄슂.</div>
+
+      <!-- 援?? 異붽? -->
+      <div class="admin-section-title">??援?? 異붽?</div>
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <input type="text" id="admin-add-id"   placeholder="?꾩씠?? class="admin-input" style="flex:1;">
+        <input type="password" id="admin-add-pw" placeholder="鍮꾨?踰덊샇" class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-cyan" onclick="adminAddCitizen()">異붽?</button>
+      </div>
+
+      <!-- ?곹깭 愿由?-->
+      <div class="admin-section-title">?숋툘 援?? ?곹깭 愿由?/div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="admin-btn admin-btn-red"  onclick="adminCitizenAction('deport')">?슟 異붾갑</button>
+        <button class="admin-btn admin-btn-red"  onclick="adminCitizenAction('block')">?뵁 李⑤떒</button>
+        <button class="admin-btn admin-btn-cyan" onclick="adminCitizenAction('unblock')">??李⑤떒?댁젣</button>
+        <button class="admin-btn admin-btn-cyan" onclick="adminCitizenAction('warn')">?좑툘 寃쎄퀬</button>
+      </div>
+
+      <!-- ?쒕?沅?/ VIP / 釉붾옓由ъ뒪??-->
+      <div class="admin-section-title">?お 沅뚰븳 & ?깃툒</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+        <button class="admin-btn admin-btn-cyan" onclick="adminCitizenAction('citizen_grant')">?お ?쒕?沅?吏湲?/button>
+        <button class="admin-btn admin-btn-red"  onclick="adminCitizenAction('citizen_revoke')">???쒕?沅?諛뺥깉</button>
+        <button class="admin-btn admin-btn-cyan" onclick="adminCitizenAction('vip')">狩?VIP 吏??/button>
+        <button class="admin-btn admin-btn-red"  onclick="adminCitizenAction('blacklist')">?뼡 釉붾옓由ъ뒪??/button>
+      </div>
+
+      <!-- ?⑤씪??援?? / ?쒕룞 湲곕줉 -->
+      <div class="admin-section-title">?뱻 援?? ?꾪솴</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminOnlineCitizens()">?뙋 ?⑤씪??援?? ?뺤씤</button>
+        <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminCitizenActivityLog()">?뱥 ?쒕룞 湲곕줉 蹂닿린</button>
+      </div>
+      <div id="admin-citizen-status" style="font-size:11px;color:var(--text-dim);padding:6px;background:rgba(0,0,0,0.2);border-radius:6px;max-height:80px;overflow-y:auto;">??/div>
+      <div class="admin-section-title" style="margin-top:10px;">?뮯 ?먭툑 吏湲?/ ?뺤닔</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="number" id="admin-money-amount" placeholder="湲덉븸 ?? class="admin-input" style="flex:1;" value="100000">
+        <button class="admin-btn admin-btn-cyan" onclick="adminMoneyAction('give')">?뮥 吏湲?/button>
+        <button class="admin-btn admin-btn-red"  onclick="adminMoneyAction('take')">?뮯 ?뺤닔</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);">????援?? 寃?됰??먯꽌 ??곸쓣 癒쇱? 寃?됲븯?몄슂.</div>
+    </div>
+
+    <!-- ?대깽????-->
+    <div id="admin-tab-events" class="admin-tab-content">
+
+      <!-- 蹂대Ъ 李얘린 -->
+      <div class="admin-section-title">?뤃?띯삝截?蹂대Ъ 李얘린</div>
+      <div style="background:rgba(255,176,48,0.07);border:1px solid rgba(255,176,48,0.25);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <input type="number" id="ev-treasure-x" placeholder="X 醫뚰몴" class="admin-input" style="flex:1;">
+          <input type="number" id="ev-treasure-y" placeholder="Y 醫뚰몴" class="admin-input" style="flex:1;">
+          <input type="number" id="ev-treasure-reward" placeholder="蹂댁긽 ?? class="admin-input" style="flex:1;" value="50000">
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminTreasurePlace()">?뱧 蹂대Ъ ?④린湲?/button>
+          <button class="admin-btn admin-btn-red"  style="flex:1;" onclick="adminTreasureRemove()">?뿊截?蹂대Ъ ?뚯닔</button>
+        </div>
+        <div id="ev-treasure-status" style="font-size:11px;color:var(--text-dim);margin-top:6px;">蹂대Ъ ?놁쓬</div>
+      </div>
+
+      <!-- 遺덇퐙異뺤젣 -->
+      <div class="admin-section-title">?럣 遺덇퐙 異뺤젣</div>
+      <div style="background:rgba(168,85,247,0.07);border:1px solid rgba(168,85,247,0.25);border-radius:8px;padding:10px;margin-bottom:10px;">
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <select id="ev-fw-type" class="admin-input" style="flex:1;">
+            <option value="rainbow">?뙂 臾댁?媛?/option>
+            <option value="gold">?쪍 ?⑷툑</option>
+            <option value="blue">?뮋 ?뚮?</option>
+            <option value="red">?ㅿ툘 鍮④컙</option>
+            <option value="sakura">?뙵 踰싰퐙</option>
+          </select>
+          <input type="number" id="ev-fw-duration" placeholder="吏??珥? class="admin-input" style="flex:1;max-width:80px;" value="30">
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminFireworksStart()">?럣 異뺤젣 ?쒖옉</button>
+          <button class="admin-btn admin-btn-red"  style="flex:1;" onclick="adminFireworksStop()">?뱄툘 以묒?</button>
+        </div>
+        <div id="ev-fw-status" style="font-size:11px;color:var(--text-dim);margin-top:6px;">遺덇퐙 ?놁쓬</div>
+      </div>
+
+      <!-- 怨⑤뱶 ?대깽??-->
+      <div class="admin-section-title">?뮥 怨⑤뱶 ?대깽??/div>
+      <div style="background:rgba(255,176,48,0.07);border:1px solid rgba(255,176,48,0.25);border-radius:8px;padding:10px;">
+        <div style="display:flex;gap:6px;margin-bottom:6px;">
+          <input type="number" id="ev-gold-amount" placeholder="1媛쒕떦 ?? class="admin-input" style="flex:1;" value="5000">
+          <input type="number" id="ev-gold-duration" placeholder="吏??珥? class="admin-input" style="flex:1;max-width:80px;" value="20">
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminGoldStart()">?뮥 怨⑤뱶 鍮?/button>
+          <button class="admin-btn admin-btn-red"  style="flex:1;" onclick="adminGoldStop()">?뱄툘 以묒?</button>
+        </div>
+        <div id="ev-gold-status" style="font-size:11px;color:var(--text-dim);margin-top:6px;">怨⑤뱶 ?대깽???놁쓬</div>
+      </div>
+    </div>
+
+    <!-- ?듭젣 ??-->
+    <div id="admin-tab-control" class="admin-tab-content">
+
+      <!-- 援?? 鍮꾩긽 ?좏룷 -->
+      <div class="admin-section-title">?슚 援?? 鍮꾩긽 ?좏룷</div>
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?뷂툘</span>
+          <div>
+            <div class="admin-toggle-name">怨꾩뾼???좏룷</div>
+            <div class="admin-toggle-desc">?꾧뎅??怨꾩뾼???⑤젰 諛쒕룞</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-martial-law" onchange="adminControlToggle('martialLaw',this.checked)">
+          <span class="admin-slider red-slider"></span>
+        </label>
+      </div>
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?뙔</span>
+          <div>
+            <div class="admin-toggle-name">?듯뻾湲덉?</div>
+            <div class="admin-toggle-desc">吏???쒓컙 ?대룞 ?쒗븳 寃쎄퀬</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-curfew" onchange="adminControlToggle('curfew',this.checked)">
+          <span class="admin-slider red-slider"></span>
+        </label>
+      </div>
+      <div class="admin-toggle-row">
+        <div class="admin-toggle-info">
+          <span class="admin-toggle-icon">?넊</span>
+          <div>
+            <div class="admin-toggle-name">鍮꾩긽?ы깭 ?좏룷</div>
+            <div class="admin-toggle-desc">?꾧뎅 鍮꾩긽?ы깭 怨듯몴</div>
+          </div>
+        </div>
+        <label class="admin-switch">
+          <input type="checkbox" id="toggle-emergency" onchange="adminControlToggle('emergency',this.checked)">
+          <span class="admin-slider red-slider"></span>
+        </label>
+      </div>
+
+      <!-- 蹂묐젰 諛곗튂 -->
+      <div class="admin-section-title" style="margin-top:10px;">?첉 蹂묐젰 諛곗튂</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button class="admin-btn admin-btn-cyan" style="flex:1;" onclick="adminDeploy('police')">?슂 寃쎌같 諛곗튂</button>
+        <button class="admin-btn admin-btn-red"  style="flex:1;" onclick="adminDeploy('military')">?첉 援곕? 諛곗튂</button>
+      </div>
+      <div id="admin-deploy-status" style="font-size:11px;color:var(--text-dim);margin-bottom:8px;padding:6px;background:rgba(0,0,0,0.2);border-radius:6px;">諛곗튂??蹂묐젰 ?놁쓬</div>
+      <button class="admin-btn admin-btn-red" style="width:100%;font-size:11px;" onclick="adminRecallAll()">?⑼툘 ?꾩껜 蹂묐젰 泥좎닔</button>
+
+      <!-- ?섎같 / 媛먯삦 -->
+      <div class="admin-section-title" style="margin-top:10px;">?뵇 ?섎같 & 媛먯삦</div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="text" id="admin-wanted-input" placeholder="?섎같???좎?紐?.." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-red" onclick="adminWanted()">?뵇 ?섎같</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="text" id="admin-prison-input" placeholder="?좎?紐?.." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-red"  onclick="adminPrisonSend()">?뵏 ?섍컧</button>
+        <button class="admin-btn admin-btn-cyan" onclick="adminPrisonFree()">?뵑 ?앸갑</button>
+      </div>
+      <div id="admin-prison-list" style="font-size:11px;color:var(--text-dim);padding:6px;background:rgba(0,0,0,0.2);border-radius:6px;max-height:70px;overflow-y:auto;">?섍컧???놁쓬</div>
+
+      <!-- CCTV / 湲닿툒諛⑹넚 -->
+      <div class="admin-section-title" style="margin-top:10px;">?뱻 媛먯떆 & 諛⑹넚</div>
+      <button class="admin-btn admin-btn-cyan" style="width:100%;margin-bottom:6px;" onclick="adminCCTV()">?벞 CCTV ?꾩껜 ?뺤씤</button>
+      <div style="display:flex;gap:6px;">
+        <input type="text" id="admin-broadcast-input" placeholder="湲닿툒 諛⑹넚 ?댁슜..." class="admin-input" style="flex:1;">
+        <button class="admin-btn admin-btn-red" onclick="adminEmergencyBroadcast()">?벢 諛⑹넚</button>
+      </div>
+    </div>
+
+    <!-- 濡쒓렇 ??-->
+    <div id="admin-tab-logs" class="admin-tab-content">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div class="admin-section-title" style="margin:0;">?뱥 愿由ъ옄 濡쒓렇</div>
+        <div style="display:flex;gap:6px;">
+          <button class="admin-btn admin-btn-cyan" onclick="adminRefreshLogs()" style="padding:4px 8px;font-size:11px;">?덈줈怨좎묠</button>
+          <button class="admin-btn admin-btn-red" onclick="adminClearLogs()" style="padding:4px 8px;font-size:11px;">珥덇린??/button>
+        </div>
+      </div>
+      <div class="admin-section-title">?뵇 ???먯?</div>
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <button class="admin-btn admin-btn-cyan" style="flex:1;font-size:11px;" onclick="adminHackDetect()">?뵇 ???먯? ?ㅽ뻾</button>
+        <label class="admin-switch" style="margin-left:4px;" title="?먮룞 ?쒖옱">
+          <input type="checkbox" id="toggle-autosanction" onchange="adminToggle('autosanction',this.checked)">
+          <span class="admin-slider red-slider"></span>
+        </label>
+        <span style="font-size:11px;color:var(--text-dim);align-self:center;">?먮룞 ?쒖옱</span>
+      </div>
+      <div id="admin-log-container" style="max-height:260px;overflow-y:auto;font-size:11px;font-family:monospace;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;color:#aaa;">
+        <div style="color:var(--text-dim);">濡쒓렇 ?놁쓬</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ?뿳截?湲닿툒 ?ы몴 ?앹뾽 (?꾩껜 ?뚮젅?댁뼱) -->
+  <div id="vote-popup" style="display:none;position:fixed;bottom:120px;left:50%;transform:translateX(-50%);z-index:700;min-width:320px;max-width:420px;background:rgba(4,10,24,0.95);border:1px solid rgba(0,229,255,0.3);border-radius:14px;padding:18px;box-shadow:0 0 30px rgba(0,229,255,0.15);backdrop-filter:blur(12px);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div style="font-size:13px;font-weight:700;color:#00e5ff;">?뿳截?湲닿툒 ?ы몴</div>
+      <div id="vote-timer" style="font-size:12px;color:#ffb030;font-weight:700;">60珥?/div>
+    </div>
+    <div id="vote-question-text" style="font-size:14px;font-weight:600;color:#fff;margin-bottom:12px;">吏덈Ц</div>
+    <div id="vote-options" style="display:flex;flex-direction:column;gap:8px;"></div>
+    <div id="vote-counts" style="margin-top:10px;font-size:11px;color:var(--text-dim);"></div>
+  </div>
+
+  <!-- ?벑 媛濡?紐⑤뱶 ?좊룄 ?ㅻ쾭?덉씠 -->
+  <div id="rotate-hint">
+    <div class="rotate-icon">?벑</div>
+    <p>??苡뚯쟻???뚮젅?대? ?꾪빐<br>?몃뱶?곗쓣 <strong>媛濡?/strong>濡??뚮젮二쇱꽭??</p>
+    <button onclick="document.getElementById('rotate-hint').style.display='none'">洹몃깷 ?몃줈濡??좉쾶??/button>
+  </div>
+
+  <!-- ?벑 紐⑤컮??而⑦듃濡?-->
+  <div id="m-controls" style="display:none;pointer-events:none;">
+    <!-- ?쇱そ 議곗씠?ㅽ떛 -->
+    <div id="m-joy-base" style="pointer-events:auto;">
+      <div id="m-joy-knob"></div>
+    </div>
+    <!-- ?ㅻⅨ履??≪뀡 踰꾪듉 -->
+    <div id="m-actions" style="pointer-events:auto;">
+      <button id="m-btn-jump" class="m-btn">燧놅툘<br><span>?먰봽</span></button>
+      <button id="m-btn-e" class="m-btn">?쩃<br><span>?곹샇?묒슜</span></button>
+      <button id="m-btn-map" class="m-btn">?뿺截?br><span>吏??/span></button>
+      <button id="m-btn-dash" class="m-btn">?뱤<br><span>?꾪솴</span></button>
     </div>
   </div>
 
   <!-- Local Three.js -->
   <script src="three.min.js"></script>
   <script src="simulation.js"></script>
-  <script src="game.js?v=17"></script>
+  <script src="game.js?v=20"></script>
 </body>
 </html>
+
