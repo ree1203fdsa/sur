@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <script>
+    window.addEventListener('error', function(e) {
+      alert("JS Error: " + e.message + " at " + e.filename + ":" + e.lineno);
+    });
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="네오이현 — 3D 국가 운영 시뮬레이션. 대통령이 되어 경제, 법률, 외교를 직접 관리하세요.">
@@ -32,6 +37,7 @@
       <div class="srow"><span class="sico">😊</span><div class="sbg"><div class="sfg" id="bp" style="width:75%;background:#00c8ff"></div></div><span class="sval" id="np">75</span></div>
       <div class="srow"><span class="sico">🍔</span><div class="sbg"><div class="sfg" id="bf" style="width:80%;background:#ffb030"></div></div><span class="sval" id="nf">80</span></div>
       <div class="srow"><span class="sico">⚡</span><div class="sbg"><div class="sfg" id="be" style="width:100%;background:#00e676"></div></div><span class="sval" id="ne">100</span></div>
+      <div class="srow"><span class="sico">📚</span><div class="sbg"><div class="sfg" id="bk" style="width:0%;background:#a855f7"></div></div><span class="sval" id="nk">0</span></div>
     </div>
 
     <div id="money-hud">
@@ -175,6 +181,8 @@
       <button class="db-tab-btn" onclick="switchTab('realestate')">🏠 부동산</button>
       <button class="db-tab-btn" onclick="switchTab('laws')">📜 법률 & 이벤트</button>
       <button class="db-tab-btn" onclick="switchTab('diplomacy')">🤝 외교</button>
+      <button class="db-tab-btn" onclick="switchTab('projects')">🏗️ 국책 사업</button>
+      <button class="db-tab-btn" onclick="switchTab('achievements')">🏆 업적</button>
     </div>
 
     <div class="db-body">
@@ -264,6 +272,17 @@
               <div class="graph-label text-orange">국고 추이</div>
               <canvas id="graph-treasury" width="220" height="80"></canvas>
             </div>
+          </div>
+        </div>
+
+        <!-- 📣 대통령 연설 -->
+        <div class="db-card mt-16">
+          <h3>📣 대통령 연설 (쿨다운: <span id="speech-cooldown-label">준비 완료</span>)</h3>
+          <div class="speech-btns">
+            <button class="speech-btn" onclick="doSpeech('economy')">💰 경제 성장 연설<br><small>GDP +2% · 지지율 +5</small></button>
+            <button class="speech-btn" onclick="doSpeech('welfare')">❤️ 복지 강화 연설<br><small>행복도 +8 · 지지율 +6</small></button>
+            <button class="speech-btn" onclick="doSpeech('unity')">🕊️ 국민 통합 연설<br><small>지지율 +10 · 스트레스 감소</small></button>
+            <button class="speech-btn" onclick="doSpeech('tech')">🚀 미래 기술 연설<br><small>기술지수 +15 · GDP +1%</small></button>
           </div>
         </div>
       </div>
@@ -470,6 +489,29 @@
           </div>
         </div>
       </div>
+
+      <!-- 8. PROJECTS TAB -->
+      <div id="tab-projects" class="db-tab-content">
+        <div class="db-grid-4 mb-12">
+          <div class="db-card mini-card"><span>🏗️ 진행 중 사업</span><strong id="proj-active-count" class="text-cyan">0건</strong></div>
+          <div class="db-card mini-card"><span>✅ 완공 사업</span><strong id="proj-done-count" class="text-green">0건</strong></div>
+          <div class="db-card mini-card"><span>💸 총 투자액</span><strong id="proj-total-cost" class="text-orange">₦0</strong></div>
+          <div class="db-card mini-card"><span>⏳ 다음 완공</span><strong id="proj-next-finish">-</strong></div>
+        </div>
+        <div class="db-grid-2 mt-12" id="projects-container">
+          <!-- JS가 동적으로 생성 -->
+        </div>
+      </div>
+
+      <!-- 9. ACHIEVEMENTS TAB -->
+      <div id="tab-achievements" class="db-tab-content">
+        <div class="db-card mb-12" style="text-align:center;">
+          <h3>🏆 대통령 업적 — 달성 현황: <span id="ach-count" class="text-green">0</span> / <span id="ach-total">0</span></h3>
+        </div>
+        <div class="db-grid-3" id="achievements-container">
+          <!-- JS가 동적으로 생성 -->
+        </div>
+      </div>
     </div>
   </div>
 
@@ -499,9 +541,83 @@
     <!-- Filled dynamically by JavaScript -->
   </div>
 
-  <!-- Three.js CDN -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- 🛗 엘리베이터 조작 모달 -->
+  <div id="elevator-modal" class="glass-panel modal-panel" style="display:none; text-align:center;">
+    <h3>🛗 엘리베이터 콘솔</h3>
+    <div class="elevator-screen">
+      <div class="floor-indicator" id="elevator-indicator">1F</div>
+      <div class="status-indicator" id="elevator-status">대기 중</div>
+    </div>
+    <div class="elevator-buttons" id="elevator-floor-buttons">
+      <!-- 동적으로 버튼 생성 -->
+    </div>
+    <button class="form-btn register-btn" style="margin-top:15px; width:100%;" onclick="closeElevatorModal()">닫기</button>
+  </div>
+
+  <!-- 📚 학교 공부 모달 -->
+  <div id="study-modal" class="glass-panel modal-panel" style="display:none;">
+    <div class="db-header">
+      <div class="db-title-group">
+        <span class="db-icon">🎓</span>
+        <div>
+          <h2 id="study-modal-title">네오리아 국립대 자습실</h2>
+          <p class="db-subtitle">Study & Academic Development</p>
+        </div>
+      </div>
+      <button onclick="closeStudyModal()" class="close-db-btn">&times;</button>
+    </div>
+    <div class="study-body" style="padding:15px 0; color:#fff;">
+      <div class="study-stats" style="margin-bottom:15px; background:rgba(255,255,255,0.05); padding:10px; border-radius:8px;">
+        <div>📚 현재 지식 수준: <strong class="text-cyan" id="study-knowledge-val">0</strong></div>
+        <div style="margin-top:5px;">🎓 취득한 학위: <strong class="text-green" id="study-diploma-val">없음 (고졸)</strong></div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button class="form-btn login-btn" style="width:100%; text-align:left; justify-content:space-between; display:flex;" onclick="performStudyAction('self')">
+          <span>📖 집중 자습 (에너지 -10, 지식 +5)</span>
+          <span class="text-orange">무료</span>
+        </button>
+        <button class="form-btn login-btn" style="width:100%; text-align:left; justify-content:space-between; display:flex;" onclick="performStudyAction('lecture')">
+          <span>👩‍🏫 대학교 전공 강의 (에너지 -20, 지식 +12)</span>
+          <span class="text-orange">₦15,000</span>
+        </button>
+        <button class="form-btn login-btn" style="width:100%; text-align:left; justify-content:space-between; display:flex;" onclick="performStudyAction('library')">
+          <span>📚 도서관 학술지 독서 (에너지 -15, 지식 +8)</span>
+          <span class="text-orange">₦5,000</span>
+        </button>
+        <div style="height:1px; background:rgba(255,255,255,0.1); margin:8px 0;"></div>
+        <button class="form-btn" style="width:100%; background:rgba(168,85,247,0.2); border-color:rgba(168,85,247,0.5); color:#c084fc; text-align:left; justify-content:space-between; display:flex;" onclick="takeExam()">
+          <span>🎓 학위 취득 시험 (지식 100 이상 필요)</span>
+          <span class="text-cyan">₦50,000</span>
+        </button>
+      </div>
+      <div id="study-result-msg" style="margin-top:15px; text-align:center; font-weight:600;" class="text-green"></div>
+    </div>
+  </div>
+
+  <!-- 🛌 수면/오버레이 애니메이션 -->
+  <div id="sleep-overlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; z-index:9999; flex-direction:column; justify-content:center; align-items:center; color:#fff; transition: opacity 1s ease;">
+    <div style="font-size:48px; margin-bottom:20px;">🛌 Zzz...</div>
+    <div style="font-size:20px; font-weight:600;" id="sleep-time-msg">하루의 피로를 풀고 있습니다...</div>
+  </div>
+
+  <!-- 🚪 실내 HUD 안내 패널 -->
+  <div id="interior-hud" class="glass-panel" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%); padding:12px 24px; border-radius:12px; font-size:14px; color:#fff; align-items:center; gap:20px; z-index:100; box-shadow:0 8px 32px rgba(0,0,0,0.5);">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:18px;" id="interior-icon">🏢</span>
+      <strong id="interior-name">네오리아 아파트</strong>
+      <span class="text-cyan" id="interior-floor-label">3층 (302호)</span>
+    </div>
+    <div style="width:1px; height:20px; background:rgba(255,255,255,0.2);"></div>
+    <div style="display:flex; gap:10px;">
+      <button class="form-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.15);" id="interior-stairs-up-btn" onclick="useStairs('up')">🪜 위층으로</button>
+      <button class="form-btn" style="padding:4px 10px; font-size:12px; background:rgba(255,255,255,0.15);" id="interior-stairs-down-btn" onclick="useStairs('down')">🪜 아래층으로</button>
+      <button class="form-btn register-btn" style="padding:4px 10px; font-size:12px;" onclick="exitCurrentBuilding()">🚪 건물 나가기 (ESC)</button>
+    </div>
+  </div>
+
+  <!-- Local Three.js -->
+  <script src="three.min.js"></script>
   <script src="simulation.js"></script>
-  <script src="game.js?v=12"></script>
+  <script src="game.js?v=17"></script>
 </body>
 </html>

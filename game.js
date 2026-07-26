@@ -16,6 +16,16 @@ let cameraPitch = 0.15;
 const bldMaterials = {};
 const geomCache = {};
 
+// ── FUTURISTIC SCENE GLOBALS ──
+let sunSphere, moonSphere;
+let hoverVehicles = [];
+let cityLights = [];
+let streetlights = []; // 3D Streetlights array
+let holoSigns = [];
+let lightBeams = [];
+let roofAntennaMeshes = [];
+let skyDome;
+
 // ── MAP CONSTANTS ──
 const MW = 64, MH = 64, MCX = 32, MCY = 32;
 const MAP = [];
@@ -61,7 +71,7 @@ const BINFO = {
 })();
 
 // ── BUILDING HEIGHT (taller near centre) ──
-function bHeight(r) { return Math.max(1, Math.min(3, 3 - r / 10)); }
+function bHeight(r) { return Math.max(2, Math.min(8, 8 - r / 5)); }
 
 // ── INTERACTIVE BUILDINGS ──
 const BLDS = [
@@ -149,8 +159,14 @@ BLDS.forEach(b => {
 // ── PLAYER STATE ──
 const P = {
   x: 32.5, y: 32.5,
+  h: 0, vh: 0, // 3D Jump physics variables
   angle: -Math.PI / 2,
   health: 100, happy: 75, hunger: 80, energy: 100,
+  knowledge: 0,
+  diploma: '고등학교 졸업',
+  isInterior: false,
+  currentInterior: null,
+  currentFloor: 1,
   money: 500000,
   portfolio: {
     NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0
@@ -316,8 +332,11 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     isCloudConnected = true;
 
     // Load progress
-    P.x = userData.x !== undefined ? userData.x : 32.5;
-    P.y = userData.y !== undefined ? userData.y : 32.5;
+    const rawX = userData.x !== undefined ? userData.x : 32.5;
+    const rawY = userData.y !== undefined ? userData.y : 32.5;
+    const safePos = findSafeSpawn(rawX, rawY);
+    P.x = safePos.x;
+    P.y = safePos.y;
     P.angle = userData.angle !== undefined ? userData.angle : -Math.PI / 2;
     P.health = userData.health !== undefined ? userData.health : 100;
     P.happy = userData.happy !== undefined ? userData.happy : 75;
@@ -473,7 +492,8 @@ window.startGuest = function startGuest() {
   currentPassword = '';
   isCloudConnected = false;
 
-  P.x = 32.5; P.y = 32.5; P.angle = -Math.PI / 2;
+  const guestSpawn = findSafeSpawn(32.5, 32.5);
+  P.x = guestSpawn.x; P.y = guestSpawn.y; P.angle = -Math.PI / 2;
   P.health = 100; P.happy = 75; P.hunger = 80; P.energy = 100;
   P.money = 500000;
   P.portfolio = { NEO:0, LHM:0, HYH:0, HAN:0, SEC:0, HWA:0, PLI:0, LGU:0, COD:0, WOO:0, TEN:0 };
@@ -563,6 +583,13 @@ addEventListener('keydown', e => {
   else if (e.key === 'Escape' && locked) document.exitPointerLock();
   if (e.key === 'e' || e.key === 'E') interact();
   
+  if (e.key === ' ' || e.key === 'Spacebar') {
+    if (!dlgOpen && !isDashboardOpen && (!P.h || P.h === 0)) {
+      P.vh = 3.6; // initial vertical speed impulse
+      if (typeof playClick === 'function') playClick();
+    }
+  }
+  
   if (e.key === 'Tab') {
     e.preventDefault();
     toggleDashboard(!isDashboardOpen);
@@ -643,26 +670,81 @@ function showNotice(msg) {
 
 // ── INTERACT ──
 function interact() {
+  if (P.isInterior) {
+    handleInteriorInteraction();
+    return;
+  }
   if (dlgOpen) { closeDialog(); return; }
 
-  // Check what building is in front of the camera view direction
   const ray = castRay(P.x, P.y, cameraYaw);
   if (ray.dist < 1.9 && ray.hit > 0) {
     const b = bldMap[`${ray.mapX},${ray.mapY}`];
-    if (b) { openDialog(b.name, b.greet, b.items); return; }
+    if (b) {
+      const dialogItems = [...(b.items || [])];
+      const enterableTypes = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12];
+      if (enterableTypes.includes(b.type)) {
+        dialogItems.push({
+          label: '🚪 건물 실내 입장하기',
+          fn: p => {
+            setTimeout(() => enterBuilding(b), 100);
+            return `${b.name} 내부로 입장합니다...`;
+          }
+        });
+      }
+      openDialog(b.name, b.greet, dialogItems);
+      return;
+    }
     const bi = BINFO[ray.hit];
-    if (bi) { openDialog(bi.name, '이 건물 내부에는 현재 들어갈 수 없습니다.', []); return; }
+    if (bi) {
+      const dialogItems = [
+        {
+          label: '🚪 건물 실내 입장하기',
+          fn: p => {
+            const genericBuilding = { name: bi.name, type: ray.hit, tx: ray.mapX, ty: ray.mapY };
+            setTimeout(() => enterBuilding(genericBuilding), 100);
+            return `${bi.name} 내부로 입장합니다...`;
+          }
+        }
+      ];
+      openDialog(bi.name, '네오폴리스 도시계획 건물입니다. 실내로 들어가실 수 있습니다.', dialogItems);
+      return;
+    }
   }
   showNotice('가까이 다가가서 [E] 를 눌러 상호작용하세요.');
 }
 
 // ── COLLISION ──
 function canMove(nx, ny) {
+  if (P.isInterior) {
+    const dx = nx - 32.5;
+    const dy = ny - 32.5;
+    return Math.abs(dx) < 4.2 && Math.abs(dy) < 4.2;
+  }
   const pad = 0.16;
   return [[-pad, -pad], [pad, -pad], [-pad, pad], [pad, pad]].every(([cx, cy]) => {
     const tx = Math.floor(nx + cx), ty = Math.floor(ny + cy);
     return tx >= 0 && tx < MW && ty >= 0 && ty < MH && MAP[ty][tx] === 0;
   });
+}
+
+// ── 안전한 스폰 위치 찾기 ──
+function findSafeSpawn(prefX, prefY) {
+  // 현재 위치가 이미 안전하면 그대로 반환
+  if (canMove(prefX, prefY)) return { x: prefX, y: prefY };
+
+  // 중앙에서 가까운 도로 타일 탐색
+  for (let r = 1; r < 15; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const tx = Math.floor(prefX) + dx;
+        const ty = Math.floor(prefY) + dy;
+        const cx = tx + 0.5, cy = ty + 0.5;
+        if (canMove(cx, cy)) return { x: cx, y: cy };
+      }
+    }
+  }
+  return { x: 32.5, y: 32.5 };
 }
 
 // ── RAYCASTING (DDA) ──
@@ -704,6 +786,12 @@ function updateHUD() {
       document.getElementById(bi).style.width  = v + '%';
       document.getElementById(ni).textContent = v;
     });
+
+  const kv = Math.max(0, Math.min(100, Math.round(P.knowledge || 0)));
+  const bk = document.getElementById('bk');
+  const nk = document.getElementById('nk');
+  if (bk) bk.style.width = kv + '%';
+  if (nk) nk.textContent = kv;
 
   const h = Math.floor(gMin / 60) % 24;
   const m = Math.floor(gMin) % 60;
@@ -856,15 +944,18 @@ function getBuildingMaterial(type, bldInfo, height) {
 
 function getBuildingGeometry(height) {
   if (geomCache[height]) return geomCache[height];
-  const H = height * 4.0;
+  const H = height * 8.0;
   // A box slightly smaller than the 1x1 grid tile to leave space for streets
-  const geom = new THREE.BoxGeometry(0.88, H, 0.88);
+  const geom = new THREE.BoxGeometry(0.94, H, 0.94);
   geomCache[height] = geom;
   return geom;
 }
 
 // Build 3D City Meshes
 function init3DCity() {
+  const neonCol  = (bi) => new THREE.Color(bi.acc[0]/255, bi.acc[1]/255, bi.acc[2]/255);
+  const rng = (a, b) => a + Math.random() * (b - a);
+
   for (let y = 0; y < MH; y++) {
     for (let x = 0; x < MW; x++) {
       const t = MAP[y][x];
@@ -874,23 +965,83 @@ function init3DCity() {
 
         const distFromCentre = Math.sqrt((x - MCX) ** 2 + (y - MCY) ** 2);
         const bh = bHeight(distFromCentre);
-        const H = bh * 4.0;
+        const H = bh * 8.0;
 
         const geom = getBuildingGeometry(bh);
         const mat = getBuildingMaterial(t, bi, bh);
 
         const mesh = new THREE.Mesh(geom, mat);
         mesh.position.set(x + 0.5, H / 2, y + 0.5);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         scene.add(mesh);
 
-        // Add a neon styling roof cap
-        const capGeom = new THREE.BoxGeometry(0.88, 0.08, 0.88);
-        const capMat = new THREE.MeshBasicMaterial({
-          color: new THREE.Color(bi.acc[0]/255, bi.acc[1]/255, bi.acc[2]/255)
-        });
-        const capMesh = new THREE.Mesh(capGeom, capMat);
-        capMesh.position.set(x + 0.5, H + 0.04, y + 0.5);
+        // ── 지붕 네온 캡 ──
+        const capGeo = new THREE.BoxGeometry(0.96, 0.14, 0.96);
+        const capMat = new THREE.MeshBasicMaterial({ color: neonCol(bi) });
+        const capMesh = new THREE.Mesh(capGeo, capMat);
+        capMesh.position.set(x + 0.5, H + 0.07, y + 0.5);
         scene.add(capMesh);
+
+        // ── 고층 건물 추가 디테일 ──
+        if (bh >= 4) {
+          // 안테나 (높은 건물에만)
+          const antH = rng(0.8, 2.5);
+          const antGeo = new THREE.CylinderGeometry(0.025, 0.05, antH, 6);
+          const antMat = new THREE.MeshStandardMaterial({ color: 0x444466, metalness: 0.9, roughness: 0.1 });
+          const ant = new THREE.Mesh(antGeo, antMat);
+          ant.position.set(x + 0.5, H + antH / 2 + 0.14, y + 0.5);
+          scene.add(ant);
+          roofAntennaMeshes.push(ant);
+
+          // 안테나 끝 빨간 점멸등
+          const tipMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+          const tip = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), tipMat);
+          tip.position.set(x + 0.5, H + antH + 0.14, y + 0.5);
+          tip.userData.blinkPhase = rng(0, Math.PI * 2);
+          scene.add(tip);
+          roofAntennaMeshes.push(tip);
+
+          // 홀로그램 링 (특정 건물)
+          if (bh >= 6 && Math.random() > 0.55) {
+            const ringGeo = new THREE.TorusGeometry(0.55, 0.04, 8, 32);
+            const ringMat = new THREE.MeshBasicMaterial({
+              color: neonCol(bi), transparent: true, opacity: 0.75
+            });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.set(x + 0.5, H + 0.7, y + 0.5);
+            ring.rotation.x = Math.PI / 2;
+            ring.userData.baseY = H + 0.7;
+            ring.userData.phase = rng(0, Math.PI * 2);
+            scene.add(ring);
+            holoSigns.push(ring);
+
+            // 링 위 두 번째 작은 링
+            const ring2 = new THREE.Mesh(
+              new THREE.TorusGeometry(0.3, 0.025, 6, 24),
+              new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })
+            );
+            ring2.position.set(x + 0.5, H + 1.3, y + 0.5);
+            ring2.rotation.x = Math.PI / 2;
+            ring2.userData.baseY = H + 1.3;
+            ring2.userData.phase = rng(0, Math.PI * 2) + 1;
+            scene.add(ring2);
+            holoSigns.push(ring2);
+          }
+
+          // 중간 층 수평 네온 밴드 (LED 띠)
+          if (bh >= 5) {
+            [0.3, 0.6, 0.85].forEach(frac => {
+              const bandGeo = new THREE.BoxGeometry(0.98, 0.05, 0.98);
+              const bandMat = new THREE.MeshBasicMaterial({
+                color: neonCol(bi), transparent: true, opacity: 0.6
+              });
+              const band = new THREE.Mesh(bandGeo, bandMat);
+              band.position.set(x + 0.5, H * frac, y + 0.5);
+              scene.add(band);
+            });
+          }
+        }
       }
     }
   }
@@ -906,6 +1057,90 @@ let tsGlobal = 0;
 let mouseScreenX = 0;
 let mouseScreenY = 0;
 let walkTime = 0;
+
+// ── 호버 차량 (공중 미래 이동 수단) ──
+function initHoverVehicles() {
+  const vehicleColors = [0x00e5ff, 0xa855f7, 0x00e676, 0xff4560, 0xffb030, 0xff00cc];
+  const count = 18;
+  for (let i = 0; i < count; i++) {
+    const grp = new THREE.Group();
+
+    // 차체
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0d1a2e, roughness: 0.15, metalness: 0.95 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.28, 0.46), bodyMat);
+    body.castShadow = true;
+    grp.add(body);
+
+    // 앞 유리 (파란 반투명)
+    const windGeo = new THREE.BoxGeometry(0.32, 0.18, 0.44);
+    const windMat = new THREE.MeshStandardMaterial({ color: 0x003366, transparent: true, opacity: 0.7, roughness: 0.05, metalness: 0.3 });
+    const wind = new THREE.Mesh(windGeo, windMat);
+    wind.position.set(0.3, 0.1, 0);
+    grp.add(wind);
+
+    // 엔진 글로우 하단
+    const col = vehicleColors[i % vehicleColors.length];
+    const glowMat = new THREE.MeshBasicMaterial({ color: col });
+    const glL = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.12), glowMat);
+    glL.position.set(0, -0.17, 0.18);
+    grp.add(glL);
+    const glR = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.12), glowMat);
+    glR.position.set(0, -0.17, -0.18);
+    grp.add(glR);
+
+    // 테일 라이트
+    const tailMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.42), tailMat);
+    tail.position.set(-0.56, 0, 0);
+    grp.add(tail);
+
+    // 헤드라이트
+    const headMat = new THREE.MeshBasicMaterial({ color: 0xeeeeff });
+    const headL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.12), headMat);
+    headL.position.set(0.56, 0, 0.14);
+    grp.add(headL);
+    const headR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.07, 0.12), headMat);
+    headR.position.set(0.56, 0, -0.14);
+    grp.add(headR);
+
+    // 궤도 설정
+    const orbitR  = 6 + (i % 6) * 2.8 + Math.random() * 2;
+    const height  = 5 + Math.floor(i / 6) * 4 + Math.random() * 3;
+    const phase   = (i / count) * Math.PI * 2 + Math.random();
+    const speed   = (0.18 + Math.random() * 0.22) * (Math.random() > 0.5 ? 1 : -1);
+    const tilt    = (Math.random() - 0.5) * 0.12;
+
+    grp.position.set(
+      MCX + Math.cos(phase) * orbitR,
+      height,
+      MCY + Math.sin(phase) * orbitR
+    );
+    grp.userData = { orbitR, height, phase, speed, tilt, col };
+    scene.add(grp);
+    hoverVehicles.push(grp);
+  }
+}
+
+// ── 빛기둥 이펙트 (고층 건물에서 하늘로 솟는 레이저) ──
+function initLightBeams() {
+  const beamData = [
+    { x: 32, z: 32, col: 0x00e5ff }, { x: 33, z: 27, col: 0xa855f7 },
+    { x: 28, z: 25, col: 0x00e676 }, { x: 37, z: 29, col: 0xffb030 },
+    { x: 26, z: 33, col: 0xff4560 }, { x: 38, z: 22, col: 0xff00cc },
+  ];
+  beamData.forEach(({ x, z, col }) => {
+    const bGeo = new THREE.CylinderGeometry(0.08, 0.22, 55, 8, 1, true);
+    const bMat = new THREE.MeshBasicMaterial({
+      color: col, transparent: true, opacity: 0.12, side: THREE.DoubleSide
+    });
+    const beam = new THREE.Mesh(bGeo, bMat);
+    beam.position.set(x + 0.5, 28, z + 0.5);
+    beam.userData.baseOpacity = 0.12;
+    beam.userData.phase = Math.random() * Math.PI * 2;
+    scene.add(beam);
+    lightBeams.push(beam);
+  });
+}
 
 function initPlayer3D() {
   playerGroup = new THREE.Group();
@@ -1038,6 +1273,7 @@ function initPlayer3D() {
 
   // Set initial position
   playerGroup.position.set(P.x, 0, P.y);
+  playerGroup.scale.set(0.18, 0.18, 0.18);
   scene.add(playerGroup);
 }
 
@@ -1118,52 +1354,123 @@ function createStars3D() {
 // ── INITIALIZE GAME ──
 function init3D() {
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2(0x020512, 0.04);
+  scene.fog = new THREE.FogExp2(0x020512, 0.025);
 
-  camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.05, 800);
 
-  renderer = new THREE.WebGLRenderer({ canvas: c, antialias: true });
+  renderer = new THREE.WebGLRenderer({ canvas: c, antialias: true, powerPreference: 'high-performance' });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ReinhardToneMapping;
+  renderer.toneMappingExposure = 1.35;
 
-  // Lights
-  ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
+  // ── 조명 ──
+  ambientLight = new THREE.AmbientLight(0x0a0f1e, 0.3);
   scene.add(ambientLight);
 
-  dirLight = new THREE.DirectionalLight(0xfffaed, 0.8);
-  dirLight.position.set(20, 40, 20);
+  dirLight = new THREE.DirectionalLight(0xfffaed, 1.2);
+  dirLight.position.set(20, 50, 20);
+  dirLight.castShadow = true;
+  dirLight.shadow.mapSize.width = 2048;
+  dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.camera.near = 1;
+  dirLight.shadow.camera.far = 200;
+  dirLight.shadow.camera.left = -60;
+  dirLight.shadow.camera.right = 60;
+  dirLight.shadow.camera.top = 60;
+  dirLight.shadow.camera.bottom = -60;
+  dirLight.shadow.bias = -0.0003;
   scene.add(dirLight);
 
-  hemiLight = new THREE.HemisphereLight(0xffffff, 0x222244, 0.25);
+  hemiLight = new THREE.HemisphereLight(0x1a3a6e, 0x080418, 0.4);
   scene.add(hemiLight);
 
-  // Floor
-  const floorGeo = new THREE.PlaneGeometry(64, 64);
+  // ── 태양 구체 ──
+  sunSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(2.2, 20, 20),
+    new THREE.MeshBasicMaterial({ color: 0xfffaaa })
+  );
+  scene.add(sunSphere);
+
+  // ── 달 구체 ──
+  moonSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(1.1, 16, 16),
+    new THREE.MeshBasicMaterial({ color: 0xd0deff })
+  );
+  scene.add(moonSphere);
+
+  // ── 스카이돔 (대기 그라디언트) ──
+  const skyGeo = new THREE.SphereGeometry(350, 32, 16);
+  const skyMat = new THREE.MeshBasicMaterial({ color: 0x010208, side: THREE.BackSide });
+  skyDome = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(skyDome);
+
+  // ── 바닥 ──
+  const floorGeo = new THREE.PlaneGeometry(128, 128, 1, 1);
   const floorTex = createFloorTexture();
   const floorMat = new THREE.MeshStandardMaterial({
     map: floorTex,
-    roughness: 0.85,
-    metalness: 0.15
+    roughness: 0.55,
+    metalness: 0.45,
+    envMapIntensity: 0.5
   });
   const floor = new THREE.Mesh(floorGeo, floorMat);
   floor.rotation.x = -Math.PI / 2;
-  floor.position.set(32, 0, 32); // aligned to cover x/z from 0 to 64
+  floor.position.set(32, 0, 32);
+  floor.receiveShadow = true;
   scene.add(floor);
 
-  // Build the city assets
+  // ── 도로 반사 레이어 (젖은 도로 효과) ──
+  const wetGeo = new THREE.PlaneGeometry(128, 128);
+  const wetMat = new THREE.MeshStandardMaterial({
+    color: 0x050a14,
+    roughness: 0.08,
+    metalness: 0.95,
+    transparent: true,
+    opacity: 0.35
+  });
+  const wetFloor = new THREE.Mesh(wetGeo, wetMat);
+  wetFloor.rotation.x = -Math.PI / 2;
+  wetFloor.position.set(32, 0.005, 32);
+  scene.add(wetFloor);
+
+  // ── 도시 네온 포인트 라이트 배치 ──
+  const lightColors = [0x00e5ff, 0xa855f7, 0xff4560, 0x00e676, 0xffb030, 0xff00aa];
+  const lightPositions = [
+    [32,32],[26,26],[38,26],[26,38],[38,38],
+    [22,32],[42,32],[32,22],[32,42],
+    [28,28],[36,28],[28,36],[36,36]
+  ];
+  lightPositions.forEach(([lx, ly], i) => {
+    const pl = new THREE.PointLight(lightColors[i % lightColors.length], 0, 14, 2);
+    pl.position.set(lx, 0.5, ly);
+    scene.add(pl);
+    cityLights.push(pl);
+  });
+
+  // ── 도시 건물 ──
   init3DCity();
 
-  // Create player
+  // ── 호버 차량 ──
+  initHoverVehicles();
+
+  // ── 빛기둥 이펙트 ──
+  initLightBeams();
+
+  // ── 플레이어 ──
   initPlayer3D();
 
-  // Create stars background
+  // ── 별 ──
   createStars3D();
 
-  // Create rain particle effects
+  // ── 비 ──
   createRain();
 
-  // Create 3D wandering citizens
+  // ── 시민 ──
   init3DCitizens();
+  initInteriorEngine();
 }
 
 // ── WINDOW RESIZING ──
@@ -1179,13 +1486,14 @@ window.addEventListener('resize', () => {
 let prevT = 0;
 
 function render(ts) {
-  const dt = Math.min((ts - prevT) / 1000, 0.1);
-  prevT = ts;
+  try {
+    const dt = Math.min((ts - prevT) / 1000, 0.1);
+    prevT = ts;
 
-  if (!scene) {
-    // If scene is not initialized yet, set it up
-    init3D();
-  }
+    if (!scene) {
+      // If scene is not initialized yet, set it up
+      init3D();
+    }
 
   // ─ Movement ─
   let isMoving = false;
@@ -1249,9 +1557,19 @@ function render(ts) {
     }
   }
 
+  // Apply vertical jump physics
+  if (P.vh !== 0 || P.h > 0) {
+    P.vh -= 12.0 * dt; // gravity deceleration
+    P.h += P.vh * dt;
+    if (P.h <= 0) {
+      P.h = 0;
+      P.vh = 0;
+    }
+  }
+
   // Update 3D player position
   if (playerGroup) {
-    playerGroup.position.set(P.x, 0, P.y);
+    playerGroup.position.set(P.x, P.h || 0, P.y);
 
     // Player limb animations
     if (isMoving) {
@@ -1284,35 +1602,71 @@ function render(ts) {
 
   // ── Camera position tracking (1st / 3rd Person / Bird View Toggle) ──
   if (camera) {
+    const curH = P.h || 0;
     if (viewMode === 'third') {
       if (playerGroup) playerGroup.visible = true;
       const camDist = 4.2;
       let camX = P.x - Math.sin(cameraYaw) * Math.cos(cameraPitch) * camDist;
-      let camY = 0.8 + Math.sin(cameraPitch) * camDist;
+      let camY = 0.8 + Math.sin(cameraPitch) * camDist + curH;
       let camZ = P.y - Math.cos(cameraYaw) * Math.cos(cameraPitch) * camDist;
       
       camY = Math.max(0.18, camY);
       
       camera.position.set(camX, camY, camZ);
-      camera.lookAt(new THREE.Vector3(P.x, 0.75, P.y));
+      camera.lookAt(new THREE.Vector3(P.x, 0.75 + curH, P.y));
     } else if (viewMode === 'first') {
       if (playerGroup) playerGroup.visible = false;
-      camera.position.set(P.x, 1.25, P.y);
+      camera.position.set(P.x, 1.25 + curH, P.y);
       const targetX = P.x + Math.sin(cameraYaw) * Math.cos(cameraPitch);
-      const targetY = 1.25 + Math.sin(cameraPitch);
+      const targetY = 1.25 + curH + Math.sin(cameraPitch);
       const targetZ = P.y + Math.cos(cameraYaw) * Math.cos(cameraPitch);
       camera.lookAt(new THREE.Vector3(targetX, targetY, targetZ));
     } else if (viewMode === 'bird') {
       if (playerGroup) playerGroup.visible = true;
-      camera.position.set(P.x, 24, P.y + 12);
-      camera.lookAt(new THREE.Vector3(P.x, 0, P.y));
+      camera.position.set(P.x, 24 + curH, P.y + 12);
+      camera.lookAt(new THREE.Vector3(P.x, curH, P.y));
     }
   }
 
-  // ─ Stars follow player center to feel infinite ─
+  // ─ Stars & skydome follow player ─
   if (starGroup && playerGroup) {
     starGroup.position.copy(playerGroup.position);
   }
+  if (skyDome) skyDome.position.set(P.x, 0, P.y);
+
+  // ─ 호버 차량 애니메이션 ─
+  hoverVehicles.forEach(v => {
+    const d = v.userData;
+    d.phase += d.speed * dt;
+    v.position.set(
+      MCX + Math.cos(d.phase) * d.orbitR,
+      d.height + Math.sin(ts * 0.0008 + d.phase) * 0.4,
+      MCY + Math.sin(d.phase) * d.orbitR
+    );
+    // 진행 방향으로 차 머리 회전
+    v.rotation.y = -d.phase + (d.speed > 0 ? -Math.PI / 2 : Math.PI / 2);
+    v.rotation.z = d.tilt * Math.sin(ts * 0.001 + d.phase);
+  });
+
+  // ─ 홀로그램 링 애니메이션 ─
+  holoSigns.forEach(ring => {
+    const ph = ring.userData.phase;
+    ring.position.y = ring.userData.baseY + Math.sin(ts * 0.0015 + ph) * 0.18;
+    ring.rotation.z = ts * 0.0006 * (ph % 2 < 1 ? 1 : -1);
+    ring.material.opacity = 0.45 + Math.sin(ts * 0.002 + ph) * 0.3;
+  });
+
+  // ─ 빛기둥 맥동 ─
+  lightBeams.forEach(beam => {
+    beam.material.opacity = beam.userData.baseOpacity * (0.6 + Math.sin(ts * 0.0018 + beam.userData.phase) * 0.4);
+  });
+
+  // ─ 안테나 점멸등 ─
+  roofAntennaMeshes.forEach(m => {
+    if (m.userData.blinkPhase !== undefined) {
+      m.visible = Math.sin(ts * 0.003 + m.userData.blinkPhase) > 0.3;
+    }
+  });
 
   // ─ Game time progression ─
   gMin += dt * 6;
@@ -1401,32 +1755,105 @@ function render(ts) {
   const sunAzX  = Math.cos(norm * Math.PI * 2);
   dirLight.position.set(P.x + sunAzX * 42, 1 + sunEl * 40, P.y + Math.sin(norm * Math.PI * 2) * 18);
 
+  // ── 태양 구체 위치 ──
+  if (sunSphere) {
+    sunSphere.position.copy(dirLight.position);
+    sunSphere.visible = sunEl > 0.05;
+    // 일출/일몰 색 (주황→노랑→흰)
+    const sunCol = new THREE.Color();
+    sunCol.setRGB(1.0, 0.65 + sunEl * 0.35, 0.2 + sunEl * 0.8);
+    sunSphere.material.color.copy(sunCol);
+    const sunScale = 1.0 + (1 - sunEl) * 0.8; // 지평선 근처에서 더 크게
+    sunSphere.scale.setScalar(sunScale);
+  }
+
+  // ── 달 구체 위치 ──
+  if (moonSphere) {
+    const moonNorm = (norm + 0.5) % 1;
+    const moonEl = Math.max(0, Math.sin(moonNorm * Math.PI * 2 - Math.PI / 2 + Math.PI * 0.25));
+    const moonAzX = Math.cos(moonNorm * Math.PI * 2);
+    moonSphere.position.set(
+      P.x + moonAzX * 38,
+      1 + moonEl * 36,
+      P.y + Math.sin(moonNorm * Math.PI * 2) * 16
+    );
+    moonSphere.visible = moonEl > 0.05 && smoothDay < 0.7;
+  }
+
+  // ── 스카이돔 색 업데이트 ──
+  if (skyDome) skyDome.material.color.copy(skyColor);
+
   // Stars & moon appear at night
   if (starGroup) {
     const starOpacity = Math.max(0, (1 - smoothDay * 3) * (1 - fogIntensity * 0.7));
     starGroup.material.opacity = Math.min(0.92, starOpacity);
   }
 
-  // Building neon glow: much brighter at night, dimmer in daylight
+  // ── 야간 도시 포인트 라이트 ──
   const nightGlow = 1 - smoothDay;
+  cityLights.forEach((pl, i) => {
+    pl.intensity = nightGlow * (1.8 + Math.sin(ts * 0.0012 + i) * 0.3);
+    pl.distance = 10 + Math.sin(ts * 0.0008 + i * 0.7) * 2;
+  });
+
+  // ── 3D 가로등 야간 불빛 및 전구 토글 ──
+  streetlights.forEach((sl, i) => {
+    sl.pl.intensity = nightGlow * 1.6;
+    if (nightGlow > 0.15) {
+      sl.bulb.material.color.setHex(0xffea00); // 켜졌을 때 노란색
+    } else {
+      sl.bulb.material.color.setHex(0x444444); // 낮에는 꺼진 어두운 색
+    }
+  });
+
+  // Building neon glow: much brighter at night, dimmer in daylight
   for (let key in bldMaterials) {
-    bldMaterials[key].emissiveIntensity = 0.12 + nightGlow * 1.4;
+    bldMaterials[key].emissiveIntensity = 0.08 + nightGlow * 2.2;
   }
 
-  // ─ HUD hints for nearest building in screen path ─
-  const lookRay = castRay(P.x, P.y, cameraYaw);
-  const nearDist = lookRay.dist;
-  const nearHit = lookRay.hit;
+  // ── 빛기둥: 야간에만 ──
+  lightBeams.forEach(beam => {
+    beam.visible = nightGlow > 0.15;
+  });
 
+  // ─ HUD hints for nearest building in screen path ─
   const dn = document.getElementById('dist-name');
   const ip = document.getElementById('interact-prompt');
-  if (nearDist < 2.2 && nearHit > 0) {
-    const bi = BINFO[nearHit];
-    if (bi) { dn.textContent = bi.name; dn.style.opacity = '1'; }
-    ip.style.display = nearDist < 1.9 ? 'block' : 'none';
+
+  if (P.isInterior) {
+    let closest = null;
+    let minDist = 999;
+    interiorProps.forEach(prop => {
+      const dx = P.x - prop.x;
+      const dz = P.y - prop.z;
+      const d = Math.sqrt(dx * dx + dz * dz);
+      if (d < prop.dist && d < minDist) {
+        minDist = d;
+        closest = prop;
+      }
+    });
+    
+    if (closest) {
+      dn.innerHTML = closest.name;
+      dn.style.opacity = '1';
+      ip.style.display = 'block';
+    } else {
+      dn.style.opacity = '0';
+      ip.style.display = 'none';
+    }
   } else {
-    dn.style.opacity = '0';
-    ip.style.display = 'none';
+    const lookRay = castRay(P.x, P.y, cameraYaw);
+    const nearDist = lookRay.dist;
+    const nearHit = lookRay.hit;
+
+    if (nearDist < 2.2 && nearHit > 0) {
+      const bi = BINFO[nearHit];
+      if (bi) { dn.textContent = bi.name; dn.style.opacity = '1'; }
+      ip.style.display = nearDist < 1.9 ? 'block' : 'none';
+    } else {
+      dn.style.opacity = '0';
+      ip.style.display = 'none';
+    }
   }
 
   // ════════════════════════════════════════
@@ -1502,6 +1929,10 @@ function render(ts) {
   // WebGL Render pass
   renderer.render(scene, camera);
   requestAnimationFrame(render);
+  } catch (err) {
+    console.error("Render Loop Error:", err);
+    alert("Render Error: " + err.message + "\nStack: " + err.stack);
+  }
 }
 
 // ── START ──
@@ -1837,11 +2268,15 @@ LAW_DB.forEach(l => { lawState[l.id] = false; });
 let currentLawFilter = 'all';
 
 function toggleDashboard(show) {
+  if (show && currentUsername !== 'ree1203') {
+    showNotice('🔒 대통령 집무실은 ree1203만 입장할 수 있습니다.');
+    return;
+  }
   isDashboardOpen = show;
   const db = document.getElementById('dashboard');
   if (!db) return;
   db.style.display = show ? 'flex' : 'none';
-  
+
   if (show) {
     document.exitPointerLock();
     updateDashboardData();
@@ -3557,3 +3992,1484 @@ interact = function() {
 //   초기 퀘스트 표시
 // ══════════════════════════════════════════════════════
 setTimeout(() => updateQuestPanel(), 1500);
+
+// ══════════════════════════════════════════════════════
+//   📣 대통령 연설 시스템
+// ══════════════════════════════════════════════════════
+let speechCooldownTicks = 0;
+
+const SPEECH_TYPES = {
+  economy: {
+    label: '경제 성장 연설',
+    apply() {
+      Sim.gdp *= 1.02;
+      Sim.approvalRating = Math.min(100, Sim.approvalRating + 5);
+      addEventLog('📣 대통령 연설', '경제 성장 연설: GDP +2%, 지지율 +5');
+      addNews('📣 대통령, 경제 성장 비전 제시! 국민 반응 긍정적');
+    }
+  },
+  welfare: {
+    label: '복지 강화 연설',
+    apply() {
+      Sim.popHappiness = Math.min(100, Sim.popHappiness + 8);
+      Sim.approvalRating = Math.min(100, Sim.approvalRating + 6);
+      addEventLog('📣 대통령 연설', '복지 강화 연설: 행복도 +8, 지지율 +6');
+      addNews('📣 대통령 복지 확대 약속! 국민 행복도 상승 기대');
+    }
+  },
+  unity: {
+    label: '국민 통합 연설',
+    apply() {
+      Sim.approvalRating = Math.min(100, Sim.approvalRating + 10);
+      Sim.citizens.forEach(c => { c.stress = Math.max(0, c.stress - 10); });
+      addEventLog('📣 대통령 연설', '국민 통합 연설: 지지율 +10, 전 국민 스트레스 감소');
+      addNews('📣 대통령 통합 연설에 국민 뭉클 — 지지율 사상 최고');
+    }
+  },
+  tech: {
+    label: '미래 기술 연설',
+    apply() {
+      Sim.techLevel += 15;
+      Sim.gdp *= 1.01;
+      Sim.approvalRating = Math.min(100, Sim.approvalRating + 4);
+      addEventLog('📣 대통령 연설', '미래 기술 연설: 기술지수 +15, GDP +1%');
+      addNews('📣 대통령 AI·우주 기술 비전 선포 — 첨단산업 기대감 상승');
+    }
+  }
+};
+
+window.doSpeech = function(type) {
+  if (speechCooldownTicks > 0) {
+    showNotice(`⏳ 연설 쿨다운 중입니다. (${speechCooldownTicks}틱 남음)`);
+    return;
+  }
+  const s = SPEECH_TYPES[type];
+  if (!s) return;
+  s.apply();
+  speechCooldownTicks = 3;
+  updateSpeechUI();
+  updateDashboardData();
+  showNotice(`📣 "${s.label}"이 성공적으로 발표되었습니다!`);
+};
+
+function updateSpeechUI() {
+  const lbl = document.getElementById('speech-cooldown-label');
+  if (!lbl) return;
+  if (speechCooldownTicks <= 0) {
+    lbl.textContent = '준비 완료';
+    lbl.style.color = 'var(--green)';
+  } else {
+    lbl.textContent = `${speechCooldownTicks}틱 후 가능`;
+    lbl.style.color = 'var(--gold)';
+  }
+  document.querySelectorAll('.speech-btn').forEach(btn => {
+    btn.disabled = speechCooldownTicks > 0;
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//   🏗️ 국책 사업 시스템
+// ══════════════════════════════════════════════════════
+const PROJECTS_DB = [
+  {
+    id: 'proj01', icon: '🚇', name: '하이퍼루프 전국망 건설',
+    desc: '수도~전국 주요 도시를 초고속 하이퍼루프로 연결합니다.',
+    cost: 800000000, duration: 5,
+    reward: '행복도 +10, GDP +3%, 실업률 -1%',
+    apply() { Sim.popHappiness = Math.min(100, Sim.popHappiness+10); Sim.gdp*=1.03; Sim.unemploymentRate=Math.max(0,Sim.unemploymentRate-1); }
+  },
+  {
+    id: 'proj02', icon: '🌙', name: '달 기지 1단계 건설',
+    desc: '국제 협력을 통해 달 표면에 무인 기지를 건설합니다.',
+    cost: 1500000000, duration: 8,
+    reward: '우주진척 +25%, 기술지수 +30',
+    apply() { Sim.spaceProgress=Math.min(100,Sim.spaceProgress+25); Sim.techLevel+=30; }
+  },
+  {
+    id: 'proj03', icon: '🏥', name: '국립 메가 의료센터 신설',
+    desc: '첨단 AI 진단 시스템을 갖춘 초대형 국립 병원을 건설합니다.',
+    cost: 600000000, duration: 4,
+    reward: '건강도 +12, 행복도 +5',
+    apply() { Sim.popHealth=Math.min(100,Sim.popHealth+12); Sim.popHappiness=Math.min(100,Sim.popHappiness+5); }
+  },
+  {
+    id: 'proj04', icon: '☀️', name: '초대형 태양광 발전 단지',
+    desc: '사막 지대에 국가 전력의 40%를 공급하는 태양광 단지를 조성합니다.',
+    cost: 400000000, duration: 3,
+    reward: '에너지충족 +15%, 오염도 -8%',
+    apply() { Sim.energyGridRatio=Math.min(100,Sim.energyGridRatio+15); Sim.pollution=Math.max(0,Sim.pollution-8); }
+  },
+  {
+    id: 'proj05', icon: '🎓', name: '네오이현 연구 특구 조성',
+    desc: '최첨단 AI·반도체 연구단지를 조성해 글로벌 인재를 유치합니다.',
+    cost: 700000000, duration: 6,
+    reward: '기술지수 +25, GDP +2%, 실업률 -1.5%',
+    apply() { Sim.techLevel+=25; Sim.gdp*=1.02; Sim.unemploymentRate=Math.max(0,Sim.unemploymentRate-1.5); }
+  },
+  {
+    id: 'proj06', icon: '🌿', name: '국가 수직 농업 인프라',
+    desc: '도심 고층 수직 농장 네트워크를 구축해 식량 자급률을 높입니다.',
+    cost: 300000000, duration: 3,
+    reward: '식량자급률 +20%, 행복도 +3',
+    apply() { Sim.foodSelfRatio=Math.min(100,Sim.foodSelfRatio+20); Sim.popHappiness=Math.min(100,Sim.popHappiness+3); }
+  },
+  {
+    id: 'proj07', icon: '🏟️', name: '세계 엑스포 유치 & 건설',
+    desc: '네오폴리스에서 국제 세계 박람회를 개최합니다.',
+    cost: 1200000000, duration: 7,
+    reward: '지지율 +15, GDP +5%, 외교관계 전반 +10',
+    apply() {
+      Sim.approvalRating=Math.min(100,Sim.approvalRating+15);
+      Sim.gdp*=1.05;
+      Sim.diplomacy.countries.forEach(c=>{c.relation=Math.min(100,c.relation+10);});
+    }
+  },
+  {
+    id: 'proj08', icon: '🚀', name: '국산 우주 발사체 개발',
+    desc: '완전 자국 기술로 개발한 우주 발사체로 위성을 궤도에 올립니다.',
+    cost: 2000000000, duration: 10,
+    reward: '우주진척 +30%, 기술지수 +40, 지지율 +8',
+    apply() { Sim.spaceProgress=Math.min(100,Sim.spaceProgress+30); Sim.techLevel+=40; Sim.approvalRating=Math.min(100,Sim.approvalRating+8); }
+  }
+];
+
+// 프로젝트 진행 상태
+const projState = {};
+PROJECTS_DB.forEach(p => { projState[p.id] = { started: false, done: false, startTick: 0, progress: 0 }; });
+
+window.startProject = function(id) {
+  const proj = PROJECTS_DB.find(p => p.id === id);
+  if (!proj) return;
+  const st = projState[id];
+  if (st.started || st.done) return;
+  if (Sim.treasury < proj.cost) {
+    showNotice(`⚠️ 국고 부족! 필요: ₦${proj.cost.toLocaleString()}`);
+    return;
+  }
+  Sim.treasury -= proj.cost;
+  st.started = true;
+  st.startTick = Sim.tickCount;
+  st.progress = 0;
+  addEventLog(`🏗️ 국책 사업 착공`, `"${proj.icon} ${proj.name}" 공사가 시작되었습니다.`);
+  addNews(`🏗️ "${proj.name}" 국책 사업 착공 — 완공 시 ${proj.reward}`);
+  showNotice(`🏗️ "${proj.name}" 착공! 완공까지 ${proj.duration}틱`);
+  updateDashboardData();
+};
+
+function tickProjects() {
+  if (speechCooldownTicks > 0) {
+    speechCooldownTicks--;
+    updateSpeechUI();
+  }
+  PROJECTS_DB.forEach(proj => {
+    const st = projState[proj.id];
+    if (!st.started || st.done) return;
+    const elapsed = Sim.tickCount - st.startTick;
+    st.progress = Math.min(100, Math.round((elapsed / proj.duration) * 100));
+    if (elapsed >= proj.duration) {
+      st.done = true;
+      st.started = false;
+      proj.apply();
+      addEventLog(`✅ 국책 사업 완공`, `"${proj.icon} ${proj.name}" 완공! 효과: ${proj.reward}`);
+      addNews(`🎉 "${proj.name}" 완공! — ${proj.reward} 효과 발생`);
+      showNotice(`🎉 "${proj.name}" 완공되었습니다!`);
+    }
+  });
+}
+
+function renderProjects() {
+  const container = document.getElementById('projects-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  let activeCount = 0, doneCount = 0, totalCost = 0;
+  let nextFinish = '-';
+  let minTick = Infinity;
+
+  PROJECTS_DB.forEach(proj => {
+    const st = projState[proj.id];
+    if (st.done) { doneCount++; totalCost += proj.cost; }
+    if (st.started) {
+      activeCount++;
+      totalCost += proj.cost;
+      const ticksLeft = proj.duration - (Sim.tickCount - st.startTick);
+      if (ticksLeft < minTick) { minTick = ticksLeft; nextFinish = `${ticksLeft}틱 후`; }
+    }
+
+    const card = document.createElement('div');
+    card.className = `proj-card${st.started ? ' in-progress' : st.done ? ' done' : ''}`;
+    card.innerHTML = `
+      <div class="proj-title">${proj.icon} ${proj.name}${st.done ? ' ✅' : st.started ? ' 🔨' : ''}</div>
+      <div class="proj-desc">${proj.desc}</div>
+      <div class="proj-cost">💸 투자: ₦${(proj.cost/100000000).toFixed(1)}억 &nbsp;|&nbsp; ⏱️ 기간: ${proj.duration}틱</div>
+      <div class="proj-effect">📈 완공 효과: ${proj.reward}</div>
+      ${st.started || st.done ? `
+        <div class="proj-progress-wrap">
+          <div class="proj-progress-fill" style="width:${st.progress}%"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text-dim);text-align:right">${st.progress}% 완료</div>
+      ` : ''}
+      <button class="proj-start-btn" onclick="startProject('${proj.id}')"
+        ${st.started || st.done ? 'disabled' : ''}>
+        ${st.done ? '✅ 완공' : st.started ? `🔨 건설 중 (${proj.duration-(Sim.tickCount-st.startTick)}틱 남음)` : '🏗️ 착공하기'}
+      </button>
+    `;
+    container.appendChild(card);
+  });
+
+  const el = id => document.getElementById(id);
+  if (el('proj-active-count')) el('proj-active-count').textContent = activeCount + '건';
+  if (el('proj-done-count'))   el('proj-done-count').textContent   = doneCount + '건';
+  if (el('proj-total-cost'))   el('proj-total-cost').textContent   = `₦${(totalCost/100000000).toFixed(0)}억`;
+  if (el('proj-next-finish'))  el('proj-next-finish').textContent  = nextFinish;
+}
+
+// ══════════════════════════════════════════════════════
+//   🏆 업적 시스템
+// ══════════════════════════════════════════════════════
+const ACHIEVEMENTS = [
+  { id:'ach01', icon:'💰', name:'경제 대국', desc:'GDP ₦1조 달성', check:()=>Sim.gdp>=1000000000000 },
+  { id:'ach02', icon:'😊', name:'행복한 나라', desc:'국민 행복도 90% 이상', check:()=>Sim.popHappiness>=90 },
+  { id:'ach03', icon:'🏥', name:'건강 국가', desc:'국민 건강도 95% 이상', check:()=>Sim.popHealth>=95 },
+  { id:'ach04', icon:'🚔', name:'치안 완벽', desc:'범죄율 0.5% 이하', check:()=>Sim.popCrimeRate<=0.5 },
+  { id:'ach05', icon:'🌿', name:'청정 환경', desc:'환경 오염도 5% 이하', check:()=>Sim.pollution<=5 },
+  { id:'ach06', icon:'🚀', name:'우주 강국', desc:'우주개발 진척도 50% 이상', check:()=>Sim.spaceProgress>=50 },
+  { id:'ach07', icon:'🤖', name:'기술 초강국', desc:'기술 지수 200 이상', check:()=>Sim.techLevel>=200 },
+  { id:'ach08', icon:'🏦', name:'튼튼한 국고', desc:'국고 잔고 ₦100억 이상', check:()=>Sim.treasury>=10000000000 },
+  { id:'ach09', icon:'🗳️', name:'국민의 대통령', desc:'지지율 80% 이상', check:()=>Sim.approvalRating>=80 },
+  { id:'ach10', icon:'🌐', name:'외교 달인', desc:'5개국 모두 관계도 70 이상', check:()=>Sim.diplomacy.countries.every(c=>c.relation>=70) },
+  { id:'ach11', icon:'⚡', name:'에너지 독립', desc:'에너지 충족률 100%', check:()=>Sim.energyGridRatio>=100 },
+  { id:'ach12', icon:'🍚', name:'식량 자급 완전', desc:'식량 자급률 100%', check:()=>Sim.foodSelfRatio>=100 },
+  { id:'ach13', icon:'📜', name:'입법왕', desc:'10개 이상 법률 동시 시행', check:()=>Object.values(lawState).filter(v=>v).length>=10 },
+  { id:'ach14', icon:'🏗️', name:'건설의 신', desc:'국책 사업 5개 이상 완공', check:()=>Object.values(projState).filter(s=>s.done).length>=5 },
+  { id:'ach15', icon:'👑', name:'완벽한 대통령', desc:'행복도·건강도·지지율 모두 85% 이상', check:()=>Sim.popHappiness>=85&&Sim.popHealth>=85&&Sim.approvalRating>=85 }
+];
+
+const achUnlocked = {};
+ACHIEVEMENTS.forEach(a => { achUnlocked[a.id] = { unlocked: false, date: null }; });
+
+function checkAchievements() {
+  ACHIEVEMENTS.forEach(ach => {
+    if (achUnlocked[ach.id].unlocked) return;
+    if (ach.check()) {
+      achUnlocked[ach.id].unlocked = true;
+      achUnlocked[ach.id].date = `${Sim.year}년 ${Sim.month}월`;
+      showNotice(`🏆 업적 달성: "${ach.icon} ${ach.name}"!`);
+      addEventLog(`🏆 업적 달성`, `"${ach.icon} ${ach.name}" — ${ach.desc}`);
+    }
+  });
+}
+
+function renderAchievements() {
+  const container = document.getElementById('achievements-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  let unlockedCount = 0;
+  ACHIEVEMENTS.forEach(ach => {
+    const st = achUnlocked[ach.id];
+    if (st.unlocked) unlockedCount++;
+
+    const card = document.createElement('div');
+    card.className = `ach-card ${st.unlocked ? 'unlocked' : 'locked'}`;
+    card.innerHTML = `
+      <div class="ach-icon">${ach.icon}</div>
+      <div class="ach-name">${ach.name}</div>
+      <div class="ach-desc">${ach.desc}</div>
+      ${st.unlocked ? `<div class="ach-date">✅ ${st.date} 달성</div>` : '<div class="ach-desc" style="color:rgba(255,255,255,0.2)">🔒 미달성</div>'}
+    `;
+    container.appendChild(card);
+  });
+
+  const cnt = document.getElementById('ach-count');
+  const tot = document.getElementById('ach-total');
+  if (cnt) cnt.textContent = unlockedCount;
+  if (tot) tot.textContent = ACHIEVEMENTS.length;
+}
+
+// ── 기존 updateDashboardData 확장 ──
+const _origUpdateDashboard = updateDashboardData;
+updateDashboardData = function() {
+  _origUpdateDashboard();
+  if (!isDashboardOpen) return;
+  if (currentTab === 'projects') renderProjects();
+  if (currentTab === 'achievements') renderAchievements();
+};
+
+// ── 기존 Sim.tick 확장: 프로젝트 틱 + 업적 체크 ──
+const _origSimTick = Sim.tick.bind(Sim);
+Sim.tick = function() {
+  _origSimTick();
+  tickProjects();
+  checkAchievements();
+};
+
+// ══════════════════════════════════════════════════════
+//  🌿 월드 디테일: 지형 / 흙 / 도로 / 학교 / 나무
+// ══════════════════════════════════════════════════════
+function initWorldDetails() {
+  if (!scene) return;
+
+  // ── 재료 ──
+  const grassMat    = new THREE.MeshStandardMaterial({ color: 0x2a6010, roughness: 0.95 });
+  const soilMat     = new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 1.0 });
+  const trunkMat    = new THREE.MeshStandardMaterial({ color: 0x4a2e0a, roughness: 1.0 });
+  const leavesMat   = new THREE.MeshStandardMaterial({ color: 0x1e7a12, roughness: 0.8, emissive: 0x0a3a05, emissiveIntensity: 0.25 });
+  const curbMat     = new THREE.MeshStandardMaterial({ color: 0x8888aa, roughness: 0.85 });
+  const markMat     = new THREE.MeshBasicMaterial({ color: 0xffee33 });
+  const whiteMarkM  = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const playGndMat  = new THREE.MeshStandardMaterial({ color: 0xe0c87a, roughness: 0.95 });
+  const sportsMat   = new THREE.MeshStandardMaterial({ color: 0x185c18, roughness: 0.9 });
+  const fenceMat    = new THREE.MeshStandardMaterial({ color: 0x99aabb, metalness: 0.4, roughness: 0.6 });
+  const towerMat    = new THREE.MeshStandardMaterial({ color: 0x334466, emissive: 0x112244, emissiveIntensity: 0.5, roughness: 0.5, metalness: 0.3 });
+  const roofMat     = new THREE.MeshStandardMaterial({ color: 0xcc2222, roughness: 0.7 });
+  const poleMat     = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+  const flagTex     = new THREE.TextureLoader().load('neopolis_flag.jpg');
+  const flagMat     = new THREE.MeshStandardMaterial({ map: flagTex, roughness: 0.6 });
+
+  const planeH = new THREE.PlaneGeometry(0.95, 0.95);
+  planeH.rotateX(-Math.PI / 2);
+
+  // ── 1. 풀밭 — 에코 파크 (type 9) ──
+  for (let y = 2; y < MH - 2; y++) {
+    for (let x = 2; x < MW - 2; x++) {
+      if (MAP[y][x] !== 9) continue;
+      const m = new THREE.Mesh(planeH, grassMat);
+      m.position.set(x + 0.5, 0.007, y + 0.5);
+      scene.add(m);
+    }
+  }
+
+  // ── 2. 흙 — 외곽 도로 타일 (반지름 > 24) ──
+  const soilGeo = new THREE.PlaneGeometry(0.88, 0.88);
+  soilGeo.rotateX(-Math.PI / 2);
+  for (let y = 2; y < MH - 2; y++) {
+    for (let x = 2; x < MW - 2; x++) {
+      if (MAP[y][x] !== 0) continue;
+      const r = Math.sqrt((x - MCX) ** 2 + (y - MCY) ** 2);
+      if (r < 24) continue;
+      const m = new THREE.Mesh(soilGeo, soilMat);
+      m.position.set(x + 0.5, 0.004, y + 0.5);
+      scene.add(m);
+    }
+  }
+
+  // ── 3. 도로 연석 (curb) — 도로와 건물 경계 ──
+  const curbSide = new THREE.BoxGeometry(0.88, 0.07, 0.10);
+  const curbFwd  = new THREE.BoxGeometry(0.10, 0.07, 0.88);
+  for (let y = 8; y < 56; y++) {
+    for (let x = 8; x < 56; x++) {
+      if (MAP[y][x] !== 0) continue;
+      const r = Math.sqrt((x - MCX) ** 2 + (y - MCY) ** 2);
+      if (r > 23) continue;
+
+      const check = (bx, by, geoFn, ox, oz) => {
+        if (MAP[by]?.[bx] > 0) {
+          const m = new THREE.Mesh(geoFn(), curbMat);
+          m.position.set(x + 0.5 + ox, 0.035, y + 0.5 + oz);
+          scene.add(m);
+        }
+      };
+      check(x + 1, y, () => new THREE.BoxGeometry(0.10, 0.07, 0.88),  0.45, 0);
+      check(x - 1, y, () => new THREE.BoxGeometry(0.10, 0.07, 0.88), -0.45, 0);
+      check(x, y + 1, () => new THREE.BoxGeometry(0.88, 0.07, 0.10), 0,  0.45);
+      check(x, y - 1, () => new THREE.BoxGeometry(0.88, 0.07, 0.10), 0, -0.45);
+    }
+  }
+
+  // ── 4. 도로 중앙선 — 주요 도로 황색 점선 ──
+  const dashH = new THREE.BoxGeometry(0.06, 0.005, 0.36);
+  const dashV = new THREE.BoxGeometry(0.36, 0.005, 0.06);
+  for (let y = 4; y < MH - 4; y++) {
+    for (let x = 4; x < MW - 4; x++) {
+      if (MAP[y][x] !== 0) continue;
+      const isMainX = x % 7 === 0 || x % 7 === 1;
+      const isMainY = y % 7 === 0 || y % 7 === 1;
+      if (isMainX && y % 2 === 0) {
+        const m = new THREE.Mesh(dashH, markMat);
+        m.position.set(x + 0.5, 0.009, y + 0.5);
+        scene.add(m);
+      }
+      if (isMainY && x % 2 === 0) {
+        const m = new THREE.Mesh(dashV, markMat);
+        m.position.set(x + 0.5, 0.009, y + 0.5);
+        scene.add(m);
+      }
+    }
+  }
+
+  // 흰색 횡단보도 — 링 도로와 메인 교차점
+  const cwGeo = new THREE.BoxGeometry(0.15, 0.005, 0.7);
+  for (let y = 4; y < MH - 4; y++) {
+    for (let x = 4; x < MW - 4; x++) {
+      if (MAP[y][x] !== 0) continue;
+      const r = Math.abs(Math.sqrt((x - MCX)**2 + (y - MCY)**2) - 13);
+      const isMainX = x % 7 === 0 || x % 7 === 1;
+      const isMainY = y % 7 === 0 || y % 7 === 1;
+      if (r < 1.5 && (isMainX || isMainY) && x % 3 === 0) {
+        const m = new THREE.Mesh(cwGeo, whiteMarkM);
+        m.position.set(x + 0.5, 0.009, y + 0.5);
+        scene.add(m);
+      }
+    }
+  }
+
+  // ── 5. 나무 — 에코 파크 ──
+  const treeTiles = [];
+  for (let y = 2; y < MH - 2; y++)
+    for (let x = 2; x < MW - 2; x++)
+      if (MAP[y][x] === 9) treeTiles.push({ x, y });
+
+  treeTiles.sort(() => Math.random() - 0.5).slice(0, 30).forEach(pos => {
+    const px = pos.x + 0.15 + Math.random() * 0.7;
+    const pz = pos.y + 0.15 + Math.random() * 0.7;
+    const scale = 0.7 + Math.random() * 0.8;
+
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.07, 0.45 * scale, 6), trunkMat);
+    trunk.position.set(px, 0.225 * scale, pz);
+    scene.add(trunk);
+
+    const bot = new THREE.Mesh(new THREE.ConeGeometry(0.30 * scale, 0.72 * scale, 7), leavesMat);
+    bot.position.set(px, 0.62 * scale, pz);
+    scene.add(bot);
+
+    const top = new THREE.Mesh(new THREE.ConeGeometry(0.20 * scale, 0.55 * scale, 7), leavesMat);
+    top.position.set(px, 0.98 * scale, pz);
+    scene.add(top);
+  });
+
+  // ── 6. 학교 단지 디테일 — NNU (tx:22, ty:22) ──
+  const sx = 23, sz = 23;                     // 학교 중심
+  const bldDist = Math.sqrt((22 - MCX)**2 + (22 - MCY)**2);
+  const bh = Math.max(1, Math.min(3, 3 - bldDist / 10));
+  const roofY = bh * 4.0;
+
+  // 운동장 바닥
+  const pgGeo = new THREE.PlaneGeometry(3.2, 2.4);
+  pgGeo.rotateX(-Math.PI / 2);
+  const pg = new THREE.Mesh(pgGeo, playGndMat);
+  pg.position.set(sx, 0.008, sz - 3.8);
+  scene.add(pg);
+
+  // 농구 코트 라인
+  const ctH = new THREE.BoxGeometry(2.9, 0.006, 0.04);
+  const ctV = new THREE.BoxGeometry(0.04, 0.006, 2.0);
+  [-1.1, 0, 1.1].forEach(off => {
+    scene.add(Object.assign(new THREE.Mesh(ctH, whiteMarkM), { position: new THREE.Vector3(sx, 0.011, sz - 3.8 + off) }));
+  });
+  [-1.45, 0, 1.45].forEach(off => {
+    scene.add(Object.assign(new THREE.Mesh(ctV, whiteMarkM), { position: new THREE.Vector3(sx + off, 0.011, sz - 3.8) }));
+  });
+
+  // 잔디 구역
+  const sportsGeo = new THREE.PlaneGeometry(2.6, 1.6);
+  sportsGeo.rotateX(-Math.PI / 2);
+  const sportsField = new THREE.Mesh(sportsGeo, sportsMat);
+  sportsField.position.set(sx, 0.009, sz - 6.8);
+  scene.add(sportsField);
+
+  // 울타리
+  const fpGeo = new THREE.BoxGeometry(0.05, 0.55, 0.05);
+  const frGeo = new THREE.BoxGeometry(6.0, 0.04, 0.04);
+  for (let i = 0; i <= 12; i++) {
+    const fp = new THREE.Mesh(fpGeo, fenceMat);
+    fp.position.set(sx - 3 + i * 0.5, 0.275, sz - 5.2);
+    scene.add(fp);
+  }
+  const fr = new THREE.Mesh(frGeo, fenceMat);
+  fr.position.set(sx, 0.46, sz - 5.2);
+  scene.add(fr);
+
+  // 깃대
+  const poleGeo = new THREE.CylinderGeometry(0.025, 0.03, 2.6, 8);
+  const flagpole = new THREE.Mesh(poleGeo, poleMat);
+  flagpole.position.set(sx + 1.8, 1.3, sz + 0.2);
+  scene.add(flagpole);
+  const fg = new THREE.BoxGeometry(0.55, 0.32, 0.02);
+  const flag = new THREE.Mesh(fg, flagMat);
+  flag.position.set(sx + 2.08, 2.44, sz + 0.2);
+  scene.add(flag);
+
+  // 시계탑
+  const towerGeo = new THREE.BoxGeometry(0.7, 0.9, 0.7);
+  const tower = new THREE.Mesh(towerGeo, towerMat);
+  tower.position.set(sx, roofY + 0.45, sz);
+  scene.add(tower);
+
+  // 뾰족 지붕
+  const peakGeo = new THREE.ConeGeometry(0.55, 0.7, 4);
+  const peak = new THREE.Mesh(peakGeo, roofMat);
+  peak.position.set(sx, roofY + 1.25, sz);
+  peak.rotation.y = Math.PI / 4;
+  scene.add(peak);
+
+  // 학교 앞 나무 4그루
+  [[sx - 1.4, sz + 0.4], [sx + 2.4, sz + 0.4], [sx - 1.4, sz - 1.4], [sx + 2.4, sz - 1.4]].forEach(([tx2, tz2]) => {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.55, 6), trunkMat);
+    t.position.set(tx2, 0.275, tz2);
+    scene.add(t);
+    const l = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.8, 7), leavesMat);
+    l.position.set(tx2, 0.85, tz2);
+    scene.add(l);
+  });
+
+  // ── 7. 가로등 (3D Streetlights) 배치 ──
+  streetlights = [];
+  const streetlightPositions = [
+    [32.5, 26.5], [32.5, 37.5], [26.5, 32.5], [38.5, 32.5],
+    [29.5, 29.5], [35.5, 29.5], [29.5, 35.5], [35.5, 35.5],
+    [22.5, 32.5], [42.5, 32.5], [32.5, 22.5], [32.5, 42.5],
+    [25.5, 25.5], [39.5, 25.5], [25.5, 39.5], [39.5, 39.5]
+  ];
+
+  const stPoleGeo = new THREE.CylinderGeometry(0.02, 0.025, 1.8, 8);
+  const stPoleMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8 });
+  const stLampGeo = new THREE.BoxGeometry(0.12, 0.08, 0.35);
+  const stLampMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+  
+  streetlightPositions.forEach(([sx, sz]) => {
+    const group = new THREE.Group();
+    group.position.set(sx, 0, sz);
+
+    // 가로등 기둥
+    const pole = new THREE.Mesh(stPoleGeo, stPoleMat);
+    pole.position.y = 0.9;
+    group.add(pole);
+
+    // 가로등 전등갓
+    const lamp = new THREE.Mesh(stLampGeo, stLampMat);
+    lamp.position.set(0, 1.8, 0.15);
+    group.add(lamp);
+
+    // 가로등 전구 (빛나는 연출)
+    const bulbGeo = new THREE.SphereGeometry(0.06, 8, 8);
+    const bulbMat = new THREE.MeshBasicMaterial({ color: 0xffea00 });
+    const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+    bulb.position.set(0, 1.76, 0.25);
+    group.add(bulb);
+
+    // 실제 포인트라이트 조명
+    const pl = new THREE.PointLight(0xffea00, 0, 8, 2);
+    pl.position.set(0, 1.7, 0.25);
+    group.add(pl);
+
+    scene.add(group);
+
+    streetlights.push({ pl, bulb, group });
+  });
+}
+
+// doExtraInit3D에 월드 디테일 연결 (한 번만 실행)
+let _worldDetailsDone = false;
+const _origDoExtra = doExtraInit3D;
+window.doExtraInit3D = function() {
+  _origDoExtra();
+  if (!_worldDetailsDone && scene) {
+    _worldDetailsDone = true;
+    initWorldDetails();
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  🗺️ 네오폴리스 공식 도시계획 지도 — MAP 완전 재설계
+//  원형 방사형 도로 + 환형 도로 + 28개 지구 반영
+// ═══════════════════════════════════════════════════════════════
+(function applyNeopholisOfficialMap() {
+
+  // ── 새 MAP 생성 ──
+  for (let y = 0; y < MH; y++) {
+    MAP[y] = [];
+    for (let x = 0; x < MW; x++) {
+      const dx = x - MCX, dy = y - MCY;
+      const r  = Math.sqrt(dx * dx + dy * dy);
+      const a  = ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360; // 0=North CW
+
+      // 외곽 (도시 밖)
+      if (r > 28) { MAP[y][x] = 0; continue; }
+
+      // 중앙 광장 (열린 공간)
+      if (r < 2.5) { MAP[y][x] = 0; continue; }
+
+      // 환형 도로 6개
+      if (
+        Math.abs(r -  4.8) < 0.7 ||
+        Math.abs(r -  9.2) < 0.8 ||
+        Math.abs(r - 14.8) < 0.9 ||
+        Math.abs(r - 20.5) < 1.0 ||
+        Math.abs(r - 25.5) < 1.0
+      ) { MAP[y][x] = 0; continue; }
+
+      // 주요 방사형 도로 (8방향, 45°마다)
+      const mod8  = a % 45;
+      const wMain = r < 5 ? 2.4 : r < 15 ? 1.8 : 1.3;
+      if (mod8 < wMain || mod8 > 45 - wMain) { MAP[y][x] = 0; continue; }
+
+      // 보조 방사형 도로 (16방향, r>9 구간만)
+      if (r > 9) {
+        const mod16 = a % 22.5;
+        if (mod16 < 0.9 || mod16 > 21.6) { MAP[y][x] = 0; continue; }
+      }
+
+      // 지구 배정 — 8방위 × 5 반경 구간
+      const sec = Math.floor((a + 22.5) / 45) % 8;
+      // sec: 0=N 1=NE 2=E 3=SE 4=S 5=SW 6=W 7=NW
+
+      let t;
+      if (r < 4.8) {
+        // 핵심 중심부: 정부+파이낸스+테크노
+        t = [1, 2, 3, 4, 2, 1, 4, 7][sec];
+      } else if (r < 9.2) {
+        // 내부 도심
+        // N=에코파크 NE=파이낸스 E=비즈니스 SE=테크노밸리 S=상업 SW=올드타운 W=미디어 NW=주거
+        t = [9, 2, 3, 4, 5, 6, 7, 8][sec];
+      } else if (r < 14.8) {
+        // 중간 도심
+        // N=에코파크 NE=주거 E=비즈니스 SE=테크노 S=상업 SW=올드타운 W=병원 NW=교육
+        t = [9, 8, 3, 4, 5, 6, 10, 11][sec];
+      } else if (r < 20.5) {
+        // 외곽 도시
+        // N=에코(고급주거) NE=주거 E=비즈니스/군민 SE=공공서비스 S=산업/물류 SW=올드타운 W=스포츠 NW=녹지벨트
+        t = [9, 8, 3, 10, 5, 6, 12, 9][sec];
+      } else {
+        // 최외곽 (r 20-28)
+        // N=에코 NE=주거(신도시) E=주거 SE=연구 S=물류/에너지 SW=공원 W=스포츠 NW=에코
+        t = [9, 8, 8, 4, 5, 6, 12, 9][sec];
+      }
+
+      MAP[y][x] = t;
+    }
+  }
+
+  // ── BINFO 업데이트 (공식 지구명 반영) ──
+  Object.assign(BINFO, {
+    1:  { name: '🏛️ 정부 종합청사',       acc: [160,  80, 255], base: [30, 10, 60] },
+    2:  { name: '🏦 파이낸스 지구',       acc: [255, 200,  50], base: [70, 50,  8] },
+    3:  { name: '🏢 비즈니스 지구',       acc: [  0, 180, 255], base: [ 8, 28, 75] },
+    4:  { name: '💻 테크노 밸리',         acc: [  0, 230, 220], base: [ 6, 50, 55] },
+    5:  { name: '🛍️ 상업 지구',          acc: [255, 110,  40], base: [70, 22,  8] },
+    6:  { name: '🏘️ 올드타운',           acc: [210, 160,  80], base: [52, 33,  8] },
+    7:  { name: '🎬 미디어&문화 지구',    acc: [200,  60, 255], base: [42,  8, 65] },
+    8:  { name: '🏠 주거 단지',           acc: [100, 130, 255], base: [16, 20, 55] },
+    9:  { name: '🌿 에코 파크 지구',      acc: [ 50, 220,  70], base: [ 8, 42, 12] },
+    10: { name: '🏥 병원 지구',           acc: [  0, 220, 180], base: [ 8, 42, 38] },
+    11: { name: '🎓 교육 지구',           acc: [ 80, 210, 100], base: [10, 42, 20] },
+    12: { name: '🏟️ 스포츠 & 엔터',      acc: [255,  50,  50], base: [62, 10, 10] },
+  });
+
+  // ── 인터랙티브 건물 위치 재배치 ──
+  const newBLDS = [
+    // 핵심 중심부 (r < 4.8)
+    { tx:33, ty:27, w:3, h:3, type:1, name:'🏛️ 정부 종합청사',
+      greet:'네오폴리스 정부 종합청사입니다.\n대통령 집무실과 국무회의실이 있습니다.',
+      items:[{ label:'국무회의 참관 (무료)', fn: p => { p.happy = cap(p.happy+5); return '국무회의를 참관했습니다!' }}]},
+
+    { tx:35, ty:28, w:3, h:3, type:2, name:'🏦 국제금융센터 (NPX)',
+      greet:'NPX 국제금융센터입니다.\n파이낸스 지구 심장부입니다.',
+      items:[
+        { label:'₦100,000 출금',    fn: p => { p.money += 100000; return '₦100,000 출금 완료!' }},
+        { label:'주가 확인 (무료)', fn: p => { p.happy = cap(p.happy+3); return 'NPX 지수: 3,248 (+1.2%) 강세!' }},
+      ]},
+
+    { tx:36, ty:32, w:3, h:3, type:3, name:'🏢 대기업 본사',
+      greet:'비즈니스 지구 본사입니다.',
+      items:[
+        { label:'대기업 구직 신청', fn: p => {
+          if (p.diploma === '고등학교 졸업') {
+            return '❌ 서류 탈락: 대기업 신입 입사는 [대학교 학사] 이상의 학위가 필요합니다!';
+          } else if (p.diploma === '대학교 학사') {
+            p.money += 90000;
+            p.happy = cap(p.happy + 15);
+            return '💼 대기업 입사 성공! 초임 보너스 ₦90,000 지급!';
+          } else {
+            p.money += 150000;
+            p.happy = cap(p.happy + 25);
+            return '🚀 석/박사 우대 채용 성공! 핵심 선임 연구원 보너스 ₦150,000 지급!';
+          }
+        }},
+      ]},
+
+    { tx:35, ty:36, w:3, h:3, type:4, name:'💻 AI 연구소 (테크노 밸리)',
+      greet:'네오폴리스 AI 연구소입니다.\n미래 기술 혁신의 중심입니다.',
+      items:[
+        { label:'AI 수석 연구원 지원', fn: p => {
+          if (p.diploma !== '대학원 석사/박사') {
+            return '❌ 지원 거절: 수석 연구원은 [대학원 석사/박사] 학위가 필요합니다!';
+          }
+          p.money += 200000;
+          p.happy = cap(p.happy + 30);
+          return '🤖 AI 수석 연구원 채용 성공! 사이닝 보너스 ₦200,000 지급!';
+        }},
+        { label:'AI 특강 수료 (₦10,000)', fn: p => { p.money -= 10000; p.happy = cap(p.happy+10); return 'AI 기술 특강 수료!' }},
+      ]},
+
+    // 중간 도심 (r 9-15)
+    { tx:32, ty:43, w:3, h:3, type:5, name:'🛍️ 상업 지구 쇼핑몰',
+      greet:'네오폴리스 중심 쇼핑몰입니다.',
+      items:[
+        { label:'쇼핑 (₦30,000)',    fn: p => { p.money -= 30000; p.happy = cap(p.happy+15); return '쇼핑 완료!' }},
+        { label:'음식점 (₦5,000)',   fn: p => { p.money -= 5000;  p.hungry = cap(p.hungry+30); return '맛있게 먹었습니다!' }},
+      ]},
+
+    { tx:24, ty:40, w:3, h:3, type:6, name:'🏘️ 올드타운 광장',
+      greet:'네오폴리스 올드타운입니다.\n역사와 전통의 거리입니다.',
+      items:[
+        { label:'골동품 구경 (무료)', fn: p => { p.happy = cap(p.happy+8); return '역사적 예술품 감상!' }},
+      ]},
+
+    { tx:28, ty:29, w:3, h:3, type:7, name:'🎬 NBC 미디어 타워',
+      greet:'미디어&문화 지구 NBC 타워입니다.',
+      items:[
+        { label:'영화 관람 (₦8,000)', fn: p => { p.money -= 8000; p.happy = cap(p.happy+20); return '블록버스터 관람!' }},
+      ]},
+
+    { tx:40, ty:24, w:3, h:3, type:8, name:'🏠 신도시 주거 단지',
+      greet:'신도시 스마트 주거 단지입니다.',
+      items:[
+        { label:'아파트 분양 정보 (무료)', fn: p => { p.happy = cap(p.happy+3); return '분양 안내 확인 완료!' }},
+      ]},
+
+    { tx:32, ty:21, w:3, h:3, type:9, name:'🌿 에코 파크',
+      greet:'네오폴리스 에코 파크 지구입니다.\n자연 연구소·공원·탄소흡수 숲이 있습니다.',
+      items:[
+        { label:'자연 산책 (무료)', fn: p => { p.happy = cap(p.happy+15); p.tired = Math.max(0, (p.tired||0)-20); return '자연 속 힐링!' }},
+      ]},
+
+    { tx:21, ty:32, w:3, h:3, type:10, name:'🏥 네오폴리스 종합병원',
+      greet:'네오폴리스 병원 지구 종합병원입니다.',
+      items:[
+        { label:'건강검진 (₦20,000)', fn: p => { p.money -= 20000; p.health = cap(p.health+40); return '건강검진 완료! 건강 +40' }},
+        { label:'응급처치 (무료)',     fn: p => { p.health = cap(p.health+15); return '응급처치 완료!' }},
+      ]},
+
+    { tx:24, ty:24, w:3, h:3, type:11, name:'🎓 네오리아 국립대 (NNU)',
+      greet:'네오리아 국립대학교입니다.\n교육 지구 최고 학문 기관입니다.',
+      items:[
+        { label:'특별 강의 수강 (₦15,000)', fn: p => { p.money -= 15000; p.happy = cap(p.happy+12); return '강의 수료!' }},
+      ]},
+
+    { tx:28, ty:20, w:3, h:3, type:11, name:'🏫 네오 코딩 학원',
+      greet:'네오폴리스 명문 IT 전문 학원입니다.\n체계적인 프로그래밍 강의로 지식을 빠르게 높일 수 있습니다.',
+      items:[
+        { label:'속성 코딩 부트캠프 (₦20,000)', fn: p => {
+          if (p.money < 20000) return '❌ 수강료(₦20,000)가 부족합니다!';
+          p.money -= 20000;
+          p.knowledge = cap(p.knowledge + 20);
+          p.happy = cap(p.happy - 5);
+          p.energy = cap(p.energy - 15);
+          return '💻 코딩 부트캠프 수강 완료! 지식 +20, 기력 -15, 행복도 -5';
+        }},
+        { label:'IT 자격증 대비반 (₦8,000)', fn: p => {
+          if (p.money < 8000) return '❌ 수강료(₦8,000)가 부족합니다!';
+          p.money -= 8000;
+          p.knowledge = cap(p.knowledge + 8);
+          p.energy = cap(p.energy - 8);
+          return '📚 자격증 특강 수강 완료! 지식 +8, 기력 -8';
+        }}
+      ]},
+
+    { tx:14, ty:32, w:3, h:3, type:12, name:'🏟️ 스포츠 & 엔터테인먼트',
+      greet:'스포츠 & 엔터테인먼트 단지입니다.\n대형 경기장·실내 수영장·영화관 완비.',
+      items:[
+        { label:'경기 관람 (₦12,000)', fn: p => { p.money -= 12000; p.happy = cap(p.happy+25); return '박진감 넘치는 경기!' }},
+        { label:'수영 (₦5,000)',       fn: p => { p.money -= 5000; p.happy = cap(p.happy+12); return '수영 완료! 개운하다!' }},
+      ]},
+  ];
+
+  BLDS.length = 0;
+  newBLDS.forEach(b => BLDS.push(b));
+
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  🏢 11. 건물 내부 (Interior) 및 엘리베이터/계단/공부 시스템
+// ═══════════════════════════════════════════════════════════════
+
+let interiorGroup = null;
+let interiorProps = [];
+
+function initInteriorEngine() {
+  interiorGroup = new THREE.Group();
+  scene.add(interiorGroup);
+}
+
+
+
+// Elevator arrive sound using existing Web Audio API
+function playElevatorDing() {
+  if (typeof audioCtx === 'undefined' || !audioCtx || (typeof isMuted !== 'undefined' && isMuted)) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    g.gain.setValueAtTime(0.25, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+    osc.connect(g); g.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+  } catch(e) {}
+}
+
+function enterBuilding(b) {
+  P.isInterior = true;
+  P.currentInterior = b;
+  P.currentFloor = 1;
+  
+  P.prevCityX = P.x;
+  P.prevCityY = P.y;
+  
+  P.x = 32.5;
+  P.y = 32.5;
+  if (playerGroup) {
+    playerGroup.position.set(P.x, 0, P.y);
+  }
+  cameraYaw = -Math.PI / 2;
+  cameraPitch = 0.15;
+  
+  toggleCityVisibility(false);
+  buildInteriorScene();
+  
+  document.getElementById('interior-hud').style.display = 'flex';
+  document.getElementById('interior-name').textContent = b.name;
+  updateInteriorHUD();
+  
+  closeDialog();
+  playElevatorDing();
+  showNotice(`🏢 ${b.name} 안으로 입장했습니다.`);
+}
+window.enterBuilding = enterBuilding;
+
+function exitCurrentBuilding() {
+  if (!P.isInterior) return;
+  P.isInterior = false;
+  
+  toggleCityVisibility(true);
+  clearInteriorScene();
+  
+  document.getElementById('interior-hud').style.display = 'none';
+  document.getElementById('elevator-modal').style.display = 'none';
+  document.getElementById('study-modal').style.display = 'none';
+  
+  P.x = P.prevCityX || 32.5;
+  P.y = P.prevCityY || 32.5;
+  if (playerGroup) {
+    playerGroup.position.set(P.x, 0, P.y);
+  }
+  
+  showNotice('🚪 건물 밖으로 나왔습니다.');
+  updateHUD();
+}
+window.exitCurrentBuilding = exitCurrentBuilding;
+
+function toggleCityVisibility(visible) {
+  scene.children.forEach(child => {
+    if (child === playerGroup || child === ambientLight || child === dirLight || child === hemiLight || child === skyDome || child === starGroup || child === rainParticles || child === interiorGroup) {
+      return;
+    }
+    child.visible = visible;
+  });
+}
+
+function clearInteriorScene() {
+  if (!interiorGroup) return;
+  while (interiorGroup.children.length > 0) {
+    const obj = interiorGroup.children[0];
+    interiorGroup.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach(m => m.dispose());
+      } else {
+        obj.material.dispose();
+      }
+    }
+  }
+  interiorProps = [];
+}
+
+function buildInteriorScene() {
+  clearInteriorScene();
+  if (!P.isInterior) return;
+  
+  const bType = P.currentInterior.type;
+  const floorNum = P.currentFloor;
+  
+  let floorColor = 0x3e2723; 
+  let wallColor = 0x8d6e63;
+  
+  if (bType === 11) { 
+    floorColor = 0x455a64;
+    wallColor = 0x78909c;
+  } else if ([1, 2, 3, 4].includes(bType)) { 
+    floorColor = 0x263238;
+    wallColor = 0x455a64;
+  } else if (bType === 5) { 
+    floorColor = 0xbcaaa4;
+    wallColor = 0xd7ccc8;
+  } else if (bType === 10) { 
+    floorColor = 0xb2dfdb;
+    wallColor = 0xe0f2f1;
+  }
+  
+  const floorMat = new THREE.MeshStandardMaterial({ color: floorColor, roughness: 0.8 });
+  const floorGeo = new THREE.PlaneGeometry(9, 9);
+  const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+  floorMesh.rotation.x = -Math.PI / 2;
+  floorMesh.position.set(32.5, 0.005, 32.5);
+  floorMesh.receiveShadow = true;
+  interiorGroup.add(floorMesh);
+  
+  const wallMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.9 });
+  
+  const backWall = new THREE.Mesh(new THREE.BoxGeometry(9.2, 3, 0.2), wallMat);
+  backWall.position.set(32.5, 1.5, 28);
+  interiorGroup.add(backWall);
+  
+  const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3, 9.2), wallMat);
+  leftWall.position.set(28, 1.5, 32.5);
+  interiorGroup.add(leftWall);
+  
+  const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3, 9.2), wallMat);
+  rightWall.position.set(37, 1.5, 32.5);
+  interiorGroup.add(rightWall);
+  
+  const frontWall = new THREE.Mesh(new THREE.BoxGeometry(9.2, 3, 0.2), wallMat);
+  frontWall.position.set(32.5, 1.5, 37);
+  interiorGroup.add(frontWall);
+  
+  const light = new THREE.PointLight(0xffffff, 0.9, 15);
+  light.position.set(32.5, 2.5, 32.5);
+  interiorGroup.add(light);
+  
+  const elMat = new THREE.MeshStandardMaterial({ color: 0x112233, metalness: 0.9, roughness: 0.1 });
+  const elDoor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 0.1), elMat);
+  elDoor.position.set(30, 1.1, 28.1);
+  interiorGroup.add(elDoor);
+  
+  const elGlow = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0x00ffcc }));
+  elGlow.position.set(30, 2.3, 28.15);
+  interiorGroup.add(elGlow);
+  
+  interiorProps.push({
+    name: '🛗 엘리베이터 조작반',
+    x: 30, z: 29.2, dist: 1.5,
+    action: () => openElevatorModal()
+  });
+  
+  const stairDoor = new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.2, 0.1), new THREE.MeshStandardMaterial({ color: 0x3e2723, roughness: 0.6 }));
+  stairDoor.position.set(35, 1.1, 28.1);
+  interiorGroup.add(stairDoor);
+  
+  const stGlow = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.15, 0.05), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
+  stGlow.position.set(35, 2.3, 28.15);
+  interiorGroup.add(stGlow);
+  
+  interiorProps.push({
+    name: '🪜 비상 계단 통로',
+    x: 35, z: 29.2, dist: 1.5,
+    action: () => {
+      showNotice('비상 계단입니다. HUD 패널의 위/아래 버튼을 이용하세요.');
+    }
+  });
+
+  if (bType === 8) {
+    const bedFrame = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 2.4), new THREE.MeshStandardMaterial({ color: 0x5d4037 }));
+    bedFrame.position.set(29.5, 0.2, 34.5);
+    interiorGroup.add(bedFrame);
+    
+    const bedSheet = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.15, 2.3), new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.9 }));
+    bedSheet.position.set(29.5, 0.45, 34.55);
+    interiorGroup.add(bedSheet);
+    
+    interiorProps.push({
+      name: '🛌 침대 (수면)',
+      x: 29.5, z: 34.5, dist: 1.6,
+      action: () => sleepInBed()
+    });
+    
+    const tvBox = new THREE.Mesh(new THREE.BoxGeometry(2.0, 1.2, 0.2), new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 }));
+    tvBox.position.set(32.5, 1.2, 28.3);
+    interiorGroup.add(tvBox);
+    const tvScreen = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.0, 0.02), new THREE.MeshBasicMaterial({ color: 0x0a1424 }));
+    tvScreen.position.set(32.5, 1.2, 28.4);
+    interiorGroup.add(tvScreen);
+    
+    const sofa = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.0), new THREE.MeshStandardMaterial({ color: 0x1e88e5 }));
+    sofa.position.set(32.5, 0.3, 33.5);
+    interiorGroup.add(sofa);
+    
+    interiorProps.push({
+      name: '📺 TV & 소파 (휴식)',
+      x: 32.5, z: 33.5, dist: 1.6,
+      action: () => watchTV()
+    });
+    
+    const fridge = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.0, 0.8), new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.6 }));
+    fridge.position.set(35.5, 1.0, 34.5);
+    interiorGroup.add(fridge);
+    
+    interiorProps.push({
+      name: '🍳 주방/냉장고 (식사)',
+      x: 35.5, z: 34.5, dist: 1.5,
+      action: () => cookFood()
+    });
+    
+    const desk = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.75, 0.8), new THREE.MeshStandardMaterial({ color: 0x5d4037 }));
+    desk.position.set(35.5, 0.375, 30.5);
+    interiorGroup.add(desk);
+    
+    const pc = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.45, 0.1), new THREE.MeshBasicMaterial({ color: 0x00ffcc }));
+    pc.position.set(35.5, 0.95, 30.4);
+    interiorGroup.add(pc);
+    
+    interiorProps.push({
+      name: '💻 책상/컴퓨터 (공부)',
+      x: 35.5, z: 30.5, dist: 1.5,
+      action: () => useComputer()
+    });
+    
+    const bathBox = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.2, 1.0), new THREE.MeshStandardMaterial({ color: 0xe0f7fa, transparent: true, opacity: 0.4 }));
+    bathBox.position.set(29.5, 1.1, 30.5);
+    interiorGroup.add(bathBox);
+    
+    interiorProps.push({
+      name: '🚿 욕실 (샤워)',
+      x: 29.5, z: 30.5, dist: 1.5,
+      action: () => takeShower()
+    });
+
+    // 🪴 [추가] 고급 인테리어 소품 (화분)
+    const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.4, 8), new THREE.MeshStandardMaterial({ color: 0x795548 }));
+    pot.position.set(35.5, 0.2, 29.5);
+    interiorGroup.add(pot);
+    const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 8), new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 0.9 }));
+    leaf.position.set(35.5, 0.7, 29.5);
+    interiorGroup.add(leaf);
+
+    // 🛋️ [추가] 고급 카펫 (소파 밑 러그)
+    const rug = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.8), new THREE.MeshStandardMaterial({ color: 0x9c27b0, roughness: 1.0 }));
+    rug.rotation.x = -Math.PI / 2;
+    rug.position.set(32.5, 0.01, 33.5);
+    interiorGroup.add(rug);
+
+    // 💡 [추가] 침대 옆 스탠드 조명 (Lamp)
+    const lampPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 1.4), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8 }));
+    lampPole.position.set(31.0, 0.7, 35.5);
+    interiorGroup.add(lampPole);
+    const lampShade = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.25, 0.3), new THREE.MeshBasicMaterial({ color: 0xfff3e0 }));
+    lampShade.position.set(31.0, 1.4, 35.5);
+    interiorGroup.add(lampShade);
+    const lampLight = new THREE.PointLight(0xffb300, 0.6, 5);
+    lampLight.position.set(31.0, 1.4, 35.5);
+    interiorGroup.add(lampLight);
+
+    // 🚪 [추가] 안락한 욕실 벽체 파티션
+    const partition = new THREE.Mesh(new THREE.BoxGeometry(0.1, 3.0, 2.5), wallMat);
+    partition.position.set(31.0, 1.5, 30.5);
+    interiorGroup.add(partition);
+    
+  } else if (bType === 11) {
+    if (floorNum === 1) {
+      for (let i = -1.5; i <= 1.5; i += 1.5) {
+        const shelf = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.2, 0.6), new THREE.MeshStandardMaterial({ color: 0x8d6e63 }));
+        shelf.position.set(29.5, 1.1, 32.5 + i);
+        interiorGroup.add(shelf);
+      }
+      
+      const studyTable = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.75, 1.2), new THREE.MeshStandardMaterial({ color: 0x5d4037 }));
+      studyTable.position.set(34.5, 0.375, 32.5);
+      interiorGroup.add(studyTable);
+      
+      interiorProps.push({
+        name: '📖 도서관 독서대 (공부)',
+        x: 34.5, z: 32.5, dist: 1.8,
+        action: () => openStudyModal('도서관 열람실')
+      });
+      
+    } else {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(4.0, 1.5, 0.1), new THREE.MeshStandardMaterial({ color: 0x1b5e20, roughness: 0.7 }));
+      board.position.set(32.5, 1.5, 28.2);
+      interiorGroup.add(board);
+      
+      for (let rx = 31.0; rx <= 34.0; rx += 3.0) {
+        for (let rz = 31.0; rz <= 34.0; rz += 3.0) {
+          const desk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.75, 0.7), new THREE.MeshStandardMaterial({ color: 0xafb42b }));
+          desk.position.set(rx, 0.375, rz);
+          interiorGroup.add(desk);
+        }
+      }
+      
+      interiorProps.push({
+        name: '📚 교실 책상 (공부)',
+        x: 32.5, z: 32.5, dist: 2.2,
+        action: () => openStudyModal('2학년 A반 교실')
+      });
+
+      // 🏫 [추가] 교실 게시판 (Notice Board)
+      const noticeBoard = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 3.0), new THREE.MeshStandardMaterial({ color: 0x795548, roughness: 0.8 }));
+      noticeBoard.position.set(28.1, 1.5, 32.5);
+      interiorGroup.add(noticeBoard);
+
+      // 🪴 [추가] 교실 모퉁이 화분
+      const schoolPot = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.15, 0.4, 8), new THREE.MeshStandardMaterial({ color: 0x616161 }));
+      schoolPot.position.set(35.5, 0.2, 35.5);
+      interiorGroup.add(schoolPot);
+      const schoolLeaf = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 8), new THREE.MeshStandardMaterial({ color: 0x1b5e20 }));
+      schoolLeaf.position.set(35.5, 0.55, 35.5);
+      interiorGroup.add(schoolLeaf);
+    }
+  } else if (bType === 1) {
+    const officeDesk = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.8, 1.2), new THREE.MeshStandardMaterial({ color: 0x212121, metalness: 0.5 }));
+    officeDesk.position.set(32.5, 0.4, 30.5);
+    interiorGroup.add(officeDesk);
+    
+    interiorProps.push({
+      name: '🏛&nbsp;대통령 집무 데스크',
+      x: 32.5, z: 30.5, dist: 1.8,
+      action: () => {
+        showNotice('대통령 집무실 모니터링 콘솔입니다.');
+        toggleDashboard(true);
+      }
+    });
+
+    // 🇰🇷 [추가] 국기대 및 백그라운드 네오폴리스 공화국 국기 메시
+    const flagPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.2), new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.9 }));
+    flagPole.position.set(31.0, 1.1, 28.5);
+    interiorGroup.add(flagPole);
+    const inFlagTex = new THREE.TextureLoader().load('neopolis_flag.jpg');
+    const flagFabric = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.4, 0.02), new THREE.MeshStandardMaterial({ map: inFlagTex, roughness: 0.6 }));
+    flagFabric.position.set(31.3, 1.9, 28.5);
+    interiorGroup.add(flagFabric);
+
+    // 🛋️ [추가] 국무 대기용 대형 소파
+    const waitingSofa = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.5, 0.8), new THREE.MeshStandardMaterial({ color: 0x1a237e }));
+    waitingSofa.position.set(35.5, 0.25, 33.5);
+    waitingSofa.rotation.y = -Math.PI / 2;
+    interiorGroup.add(waitingSofa);
+
+  } else if (bType === 5) {
+    const counter = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.95, 0.8), new THREE.MeshStandardMaterial({ color: 0xeeeeee }));
+    counter.position.set(32.5, 0.475, 30.5);
+    interiorGroup.add(counter);
+    
+    interiorProps.push({
+      name: '🛒 계산대 (상점 쇼핑)',
+      x: 32.5, z: 30.5, dist: 1.8,
+      action: () => {
+        if (typeof toggleInventory === 'function') {
+          toggleInventory();
+          showNotice('상점 쇼핑 및 인벤토리가 활성화되었습니다.');
+        }
+      }
+    });
+
+    // 🛍️ [추가] 쇼핑몰 내 좌우측 제품 진열대들
+    const shelfLeft = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 2.5), new THREE.MeshStandardMaterial({ color: 0xd7ccc8 }));
+    shelfLeft.position.set(29.5, 0.9, 33.5);
+    interiorGroup.add(shelfLeft);
+    const shelfRight = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 2.5), new THREE.MeshStandardMaterial({ color: 0xd7ccc8 }));
+    shelfRight.position.set(35.5, 0.9, 33.5);
+    interiorGroup.add(shelfRight);
+
+  } else if (bType === 10) {
+    const hBed = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 2.2), new THREE.MeshStandardMaterial({ color: 0xffffff }));
+    hBed.position.set(29.5, 0.35, 33.5);
+    interiorGroup.add(hBed);
+    
+    interiorProps.push({
+      name: '🏥 환자용 침대 (진료/회복)',
+      x: 29.5, z: 33.5, dist: 1.6,
+      action: () => {
+        if (P.money < 10000) { showNotice('진료비 ₦10,000가 부족합니다.'); return; }
+        P.money -= 10000;
+        P.health = 100;
+        P.energy = cap(P.energy + 30);
+        playCoin();
+        showNotice('🏥 의사의 전문 진료를 받아 피로와 체력이 완전히 회복되었습니다!');
+        updateHUD();
+      }
+    });
+  }
+}
+
+function handleInteriorInteraction() {
+  if (!P.isInterior) return;
+  
+  let closest = null;
+  let minDist = 999;
+  
+  interiorProps.forEach(prop => {
+    const dx = P.x - prop.x;
+    const dz = P.y - prop.z;
+    const d = Math.sqrt(dx * dx + dz * dz);
+    if (d < prop.dist && d < minDist) {
+      minDist = d;
+      closest = prop;
+    }
+  });
+  
+  if (closest) {
+    closest.action();
+  } else {
+    showNotice('상호작용할 수 있는 가구나 통로 근처에서 [E]를 누르세요.');
+  }
+}
+
+function openElevatorModal() {
+  document.getElementById('elevator-modal').style.display = 'block';
+  document.exitPointerLock();
+  
+  const buttonsContainer = document.getElementById('elevator-floor-buttons');
+  buttonsContainer.innerHTML = '';
+  
+  let maxFloors = 5;
+  if (P.currentInterior.type === 1) maxFloors = 10;
+  if (P.currentInterior.type === 11) maxFloors = 3;
+  
+  for (let f = 1; f <= maxFloors; f++) {
+    const btn = document.createElement('button');
+    btn.className = 'elevator-btn';
+    if (f === P.currentFloor) btn.classList.add('active');
+    btn.textContent = f;
+    btn.onclick = () => selectFloor(f);
+    buttonsContainer.appendChild(btn);
+  }
+  
+  document.getElementById('elevator-indicator').textContent = P.currentFloor + 'F';
+  document.getElementById('elevator-status').textContent = '대기 중';
+}
+window.openElevatorModal = openElevatorModal;
+
+function closeElevatorModal() {
+  document.getElementById('elevator-modal').style.display = 'none';
+  c.requestPointerLock();
+}
+window.closeElevatorModal = closeElevatorModal;
+
+function selectFloor(floorNum) {
+  if (floorNum === P.currentFloor) {
+    showNotice('이미 현재 층에 있습니다.');
+    return;
+  }
+  
+  playClick();
+  document.getElementById('elevator-status').textContent = '이동 중...';
+  playElevatorDing();
+  
+  setTimeout(() => {
+    P.currentFloor = floorNum;
+    document.getElementById('elevator-indicator').textContent = floorNum + 'F';
+    document.getElementById('elevator-status').textContent = '도착 완료';
+    
+    buildInteriorScene();
+    updateInteriorHUD();
+    
+    playElevatorDing();
+    showNotice(`🛗 엘리베이터를 이용해 ${floorNum}층으로 이동했습니다.`);
+    
+    setTimeout(() => {
+      closeElevatorModal();
+    }, 500);
+  }, 1200);
+}
+window.selectFloor = selectFloor;
+
+function useStairs(direction) {
+  let maxFloors = 5;
+  if (P.currentInterior.type === 1) maxFloors = 10;
+  if (P.currentInterior.type === 11) maxFloors = 3;
+  
+  if (direction === 'up') {
+    if (P.currentFloor >= maxFloors) {
+      showNotice('❌ 최상층입니다. 더 이상 올라갈 수 없습니다.');
+      return;
+    }
+    P.currentFloor++;
+  } else {
+    if (P.currentFloor <= 1) {
+      showNotice('❌ 1층입니다. 더 이상 내려갈 수 없습니다.');
+      return;
+    }
+    P.currentFloor--;
+  }
+  
+  playClick();
+  buildInteriorScene();
+  updateInteriorHUD();
+  showNotice(`🪜 계단을 통해 ${P.currentFloor}층으로 이동했습니다.`);
+}
+window.useStairs = useStairs;
+
+function updateInteriorHUD() {
+  const lbl = document.getElementById('interior-floor-label');
+  if (lbl) {
+    let floorName = `${P.currentFloor}층`;
+    if (P.currentInterior.type === 8) {
+      floorName = `${P.currentFloor}층 ${300 + P.currentFloor}호`;
+    } else if (P.currentInterior.type === 11) {
+      floorName = P.currentFloor === 1 ? '1층 도서관' : `${P.currentFloor}층 교실`;
+    }
+    lbl.textContent = floorName;
+  }
+}
+
+// 가구 상호작용 함수들
+function sleepInBed() {
+  playClick();
+  const overlay = document.getElementById('sleep-overlay');
+  overlay.classList.add('active');
+  overlay.style.display = 'flex';
+  
+  setTimeout(() => {
+    gMin = 420; 
+    dayN++;
+    P.energy = 100;
+    P.health = cap(P.health + 40);
+    P.hunger = cap(P.hunger - 25);
+    updateHUD();
+    
+    playNotice();
+    document.getElementById('sleep-time-msg').textContent = '새 아침이 밝았습니다!';
+    
+    setTimeout(() => {
+      overlay.classList.remove('active');
+      overlay.style.display = 'none';
+      document.getElementById('sleep-time-msg').textContent = '하루의 피로를 풀고 있습니다...';
+      showNotice('🛌 잠에서 깼습니다. 에너지와 건강이 완전히 회복되었습니다!');
+    }, 1200);
+  }, 2000);
+}
+window.sleepInBed = sleepInBed;
+
+function watchTV() {
+  P.happy = cap(P.happy + 18);
+  P.energy = cap(P.energy + 5);
+  playNotice();
+  showNotice('📺 TV 예능 프로그램을 시청했습니다. 행복도 😊 상승!');
+  updateHUD();
+}
+window.watchTV = watchTV;
+
+function cookFood() {
+  if (P.money < 3000) {
+    showNotice('식재료 구매비 ₦3,000가 부족합니다.');
+    return;
+  }
+  P.money -= 3000;
+  P.hunger = cap(P.hunger + 35);
+  P.happy = cap(P.happy + 5);
+  playNotice();
+  showNotice('🍳 요리를 해서 맛있는 식사를 했습니다. 허기 🍔 해소!');
+  updateHUD();
+}
+window.cookFood = cookFood;
+
+function takeShower() {
+  P.health = cap(P.health + 10);
+  P.happy = cap(P.happy + 10);
+  playNotice();
+  showNotice('🚿 샤워를 했습니다. 기분이 개운해졌습니다! 😊');
+  updateHUD();
+}
+window.takeShower = takeShower;
+
+function useComputer() {
+  P.knowledge = cap(P.knowledge + 3);
+  P.energy = cap(P.energy - 8);
+  playNotice();
+  showNotice('💻 컴퓨터로 인터넷 강의 및 자료 조사를 했습니다. 지식 📚 상승!');
+  updateHUD();
+}
+window.useComputer = useComputer;
+
+// 학교 공부하기 모달
+let currentStudyLocation = 'NNU 대학교';
+function openStudyModal(locName) {
+  currentStudyLocation = locName || 'NNU 대학교';
+  document.getElementById('study-modal-title').textContent = currentStudyLocation;
+  document.getElementById('study-knowledge-val').textContent = P.knowledge || 0;
+  document.getElementById('study-diploma-val').textContent = P.diploma || '고등학교 졸업';
+  document.getElementById('study-result-msg').textContent = '';
+  document.getElementById('study-modal').style.display = 'block';
+  document.exitPointerLock();
+}
+window.openStudyModal = openStudyModal;
+
+function closeStudyModal() {
+  document.getElementById('study-modal').style.display = 'none';
+  c.requestPointerLock();
+}
+window.closeStudyModal = closeStudyModal;
+
+function performStudyAction(type) {
+  let cost = 0;
+  let kGain = 0;
+  let eCost = 0;
+  let msg = '';
+  
+  if (type === 'self') {
+    cost = 0;
+    kGain = 5;
+    eCost = 10;
+    msg = '📖 조용히 자습을 했습니다.';
+  } else if (type === 'lecture') {
+    cost = 15000;
+    kGain = 12;
+    eCost = 20;
+    msg = '👩‍🏫 전공 대학 강의를 수강했습니다.';
+  } else if (type === 'library') {
+    cost = 5000;
+    kGain = 8;
+    eCost = 15;
+    msg = '📚 도서관 학술지를 탐독했습니다.';
+  }
+  
+  if (P.money < cost) {
+    document.getElementById('study-result-msg').textContent = '❌ 등록금/비용이 부족합니다!';
+    document.getElementById('study-result-msg').className = 'text-red';
+    return;
+  }
+  if (P.energy < eCost) {
+    document.getElementById('study-result-msg').textContent = '❌ 너무 피곤해서 공부에 집중할 수 없습니다! (에너지 부족)';
+    document.getElementById('study-result-msg').className = 'text-red';
+    return;
+  }
+  
+  P.money -= cost;
+  P.energy -= eCost;
+  P.knowledge = cap((P.knowledge || 0) + kGain, 0, 150);
+  
+  playCoin();
+  document.getElementById('study-knowledge-val').textContent = P.knowledge;
+  document.getElementById('study-result-msg').textContent = `${msg} 지식 +${kGain}!`;
+  document.getElementById('study-result-msg').className = 'text-green';
+  updateHUD();
+}
+window.performStudyAction = performStudyAction;
+
+function takeExam() {
+  const reqK = P.diploma === '고등학교 졸업' ? 100 : 140;
+  const nextDip = P.diploma === '고등학교 졸업' ? '대학교 학사' : '대학원 석사/박사';
+  
+  if (P.money < 50000) {
+    document.getElementById('study-result-msg').textContent = '❌ 시험 응시료 ₦50,000가 부족합니다!';
+    document.getElementById('study-result-msg').className = 'text-red';
+    return;
+  }
+  
+  if ((P.knowledge || 0) < reqK) {
+    document.getElementById('study-result-msg').textContent = `❌ 시험 낙방: 지식이 부족합니다! (${reqK} 필요)`;
+    document.getElementById('study-result-msg').className = 'text-red';
+    return;
+  }
+  
+  P.money -= 50000;
+  P.diploma = nextDip;
+  P.happy = cap(P.happy + 30);
+  
+  playNotice();
+  document.getElementById('study-diploma-val').textContent = P.diploma;
+  document.getElementById('study-result-msg').textContent = `🎉 축하합니다! 시험에 합격하여 [${nextDip}] 학위를 취득했습니다!`;
+  document.getElementById('study-result-msg').className = 'text-green';
+  updateHUD();
+}
+window.takeExam = takeExam;
