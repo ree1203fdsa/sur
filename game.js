@@ -9099,3 +9099,31 @@ if (isMobile) {
   onOrientationChange();
 })();
 
+// ════════════════════════════════════════════════
+//  화면 방향 자동 전환: 로그인=세로(포트레이트), 게임=가로(랜드스케이프)
+// ════════════════════════════════════════════════
+(function() {
+  if (!isMobile) return;
+  if (!screen.orientation || !screen.orientation.lock) return;
+
+  // ① 페이지 로드 시 → 세로(로그인 화면)
+  screen.orientation.lock('portrait').catch(function() {});
+
+  // ② 게임 시작 시 → 가로로 전환
+  var _origStartMultiplayer6 = startMultiplayer;
+  startMultiplayer = function() {
+    _origStartMultiplayer6();
+    screen.orientation.lock('landscape').then(function() {
+      // 잠금 성공 → OS가 자동으로 가로로 회전하므로 힌트 불필요
+      var hint = document.getElementById('rotate-hint');
+      if (hint) hint.style.display = 'none';
+    }).catch(function() {
+      // 잠금 실패(권한/풀스크린 조건 미충족) → 현재 세로면 힌트 표시
+      var hint = document.getElementById('rotate-hint');
+      if (hint && window.innerWidth <= window.innerHeight) {
+        hint.style.display = 'flex';
+      }
+    });
+  };
+})();
+
