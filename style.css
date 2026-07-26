@@ -2888,3 +2888,67 @@ body.is-mobile-device #m-controls {
   }
 }
 
+/* ══════════════════════════════════════
+   🔒 교도소 수감 HUD
+══════════════════════════════════════ */
+#prison-hud {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 7000;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  animation: prisonSlideDown 0.4s ease;
+}
+
+@keyframes prisonSlideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+.prison-hud-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, rgba(180,20,20,0.92), rgba(100,10,10,0.92));
+  border-bottom: 2px solid rgba(255,60,60,0.7);
+  border-left: 1px solid rgba(255,60,60,0.4);
+  border-right: 1px solid rgba(255,60,60,0.4);
+  border-radius: 0 0 12px 12px;
+  padding: 8px 24px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 20px rgba(200,0,0,0.4);
+  animation: prisonPulse 2s ease-in-out infinite;
+}
+
+@keyframes prisonPulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(200,0,0,0.4); }
+  50%       { box-shadow: 0 4px 30px rgba(255,50,50,0.7); }
+}
+
+.prison-icon {
+  font-size: 22px;
+  animation: prisonChain 1s linear infinite;
+}
+
+@keyframes prisonChain {
+  0%   { transform: rotate(-8deg); }
+  50%  { transform: rotate(8deg); }
+  100% { transform: rotate(-8deg); }
+}
+
+.prison-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 1px;
+}
+
+.prison-sub {
+  font-size: 11px;
+  color: rgba(255,180,180,0.85);
+  margin-top: 1px;
+}
+

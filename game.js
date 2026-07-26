@@ -305,6 +305,7 @@ async function fetchOnlinePlayers() {
     for (const [uname, info] of Object.entries(data)) {
       if (uname === currentUsername) continue;
       if (now - (info.t || 0) > 15000) continue; // stale > 15s
+      if (info.spectator) continue; // 관전 모드 중인 플레이어는 렌더링 제외
       seen.add(uname);
       if (!otherPlayers[uname]) {
         otherPlayers[uname] = { group: createOtherPlayerModel(uname), x: info.x, y: info.y, angle: info.angle };
@@ -1718,6 +1719,17 @@ function render(ts) {
       } else {
         if (canMove(nx, P.y)) P.x = nx;
         if (canMove(P.x, nz)) P.y = nz;
+      }
+
+      // 수감 중 — 철창 밖으로 못 나가게 (매 프레임 강제 클램프)
+      if (typeof prisonState !== 'undefined' && prisonState.imprisoned) {
+        var _pdx = P.x - PRISON_CX, _pdz = P.y - PRISON_CZ;
+        var _pd = Math.sqrt(_pdx * _pdx + _pdz * _pdz);
+        if (_pd > PRISON_RADIUS) {
+          var _pr = PRISON_RADIUS / _pd;
+          P.x = PRISON_CX + _pdx * _pr;
+          P.y = PRISON_CZ + _pdz * _pr;
+        }
       }
 
       // Rotate player group to face movement direction
@@ -9375,4 +9387,214 @@ function updateAdminEntities(dt) {
     });
   }
 }
+
+// ════════════════════════════════════════════════════════
+//  🏛️ 교도소 시스템 — Prison System
+// ════════════════════════════════════════════════════════
+
+var PRISON_CX = 2.0;   // 교도소 중심 X (game coord)
+var PRISON_CZ = 2.0;   // 교도소 중심 Z (game Y)
+var PRISON_RADIUS = 2.4; // 수감자 이동 허용 반경
+
+var prisonState = { imprisoned: false };
+
+// ── 교도소 3D 건물 생성 ──
+function buildPrison() {
+  if (!scene) return;
+
+  var cx = PRISON_CX, cz = PRISON_CZ;
+  var W = 5, D = 5, H = 4.5;
+
+  var wallMat = new THREE.MeshStandardMaterial({ color: 0x3d3d4d, roughness: 0.88, metalness: 0.06 });
+  var roofMat = new THREE.MeshStandardMaterial({ color: 0x2a2a38, roughness: 0.9 });
+  var barMat  = new THREE.MeshStandardMaterial({ color: 0x7a8a9a, roughness: 0.2, metalness: 0.9 });
+  var signMat = new THREE.MeshStandardMaterial({
+    color: 0xff2222,
+    emissive: new THREE.Color(0xff2222),
+    emissiveIntensity: 1.2
+  });
+  var floorMat = new THREE.MeshStandardMaterial({ color: 0x1e1e2a, roughness: 1.0 });
+
+  function addBox(w, h, d, mat, px, py, pz) {
+    var m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(px, py, pz);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    scene.add(m);
+    return m;
+  }
+
+  // 바닥
+  addBox(W + 0.3, 0.12, D + 0.3, floorMat, cx, 0.06, cz);
+
+  // 벽 3면 (북/동/서) — 남쪽은 철창
+  addBox(W, H, 0.22, wallMat, cx, H / 2, cz - D / 2);         // 북벽
+  addBox(0.22, H, D, wallMat, cx - W / 2, H / 2, cz);          // 서벽
+  addBox(0.22, H, D, wallMat, cx + W / 2, H / 2, cz);          // 동벽
+
+  // 지붕
+  addBox(W + 0.22, 0.22, D + 0.22, roofMat, cx, H + 0.11, cz);
+
+  // ── 철창 (남쪽) ──
+  var barGeo = new THREE.CylinderGeometry(0.055, 0.055, H, 7);
+  for (var bi = -2.2; bi <= 2.25; bi += 0.44) {
+    var bar = new THREE.Mesh(barGeo, barMat);
+    bar.position.set(cx + bi, H / 2, cz + D / 2);
+    bar.castShadow = true;
+    scene.add(bar);
+  }
+  // 가로 철창 (3줄)
+  [0.7, 1.9, 3.3].forEach(function(y) {
+    addBox(W, 0.07, 0.07, barMat, cx, y, cz + D / 2);
+  });
+  // 문기둥 (양쪽)
+  addBox(0.22, H, 0.7, wallMat, cx - W / 2 + 0.11, H / 2, cz + D / 2);
+  addBox(0.22, H, 0.7, wallMat, cx + W / 2 - 0.11, H / 2, cz + D / 2);
+
+  // ── 지붕 위 교도소 간판 (붉은 박스) ──
+  addBox(3.2, 0.45, 0.14, signMat, cx, H + 0.55, cz - D / 2 + 0.08);
+
+  // ── 내부 붉은 조명 ──
+  var innerLight = new THREE.PointLight(0xff3322, 1.1, 8, 2);
+  innerLight.position.set(cx, H * 0.65, cz - 0.5);
+  scene.add(innerLight);
+
+  // ── 외부 경고등 (점멸) ──
+  var warnLight = new THREE.PointLight(0xff0000, 0, 6, 1);
+  warnLight.position.set(cx, H + 1.0, cz + D / 2 + 0.5);
+  scene.add(warnLight);
+  setInterval(function() {
+    warnLight.intensity = warnLight.intensity > 0.5 ? 0 : 1.4;
+  }, 700);
+}
+
+// scene 준비 완료 후 교도소 건물 생성
+var _prisonBuildCheck = setInterval(function() {
+  if (typeof scene !== 'undefined' && scene && scene.children && scene.children.length > 5) {
+    clearInterval(_prisonBuildCheck);
+    buildPrison();
+  }
+}, 800);
+
+// ── 수감 상태 폴링 (3초마다) ──
+setInterval(async function() {
+  if (!currentUsername || !isCloudConnected) return;
+  try {
+    var r = await fetch(DB_URL + 'users/' + encodeURIComponent(currentUsername) + '.json');
+    if (!r.ok) return;
+    var d = await r.json();
+    var wasImprisoned = prisonState.imprisoned;
+    prisonState.imprisoned = !!(d && d.imprisoned);
+
+    if (prisonState.imprisoned && !wasImprisoned) {
+      // 방금 수감 → 교도소로 강제 이동
+      P.x = PRISON_CX; P.y = PRISON_CZ;
+      if (typeof playerGroup !== 'undefined' && playerGroup) {
+        playerGroup.position.set(P.x, 0, P.y);
+      }
+      showNotice('⛓️ 관리자에 의해 교도소에 수감되었습니다!');
+    } else if (!prisonState.imprisoned && wasImprisoned) {
+      // 석방
+      showNotice('🔓 교도소에서 석방되었습니다! 자유롭게 이동하세요.');
+    }
+
+    var hud = document.getElementById('prison-hud');
+    if (hud) hud.style.display = prisonState.imprisoned ? 'flex' : 'none';
+  } catch (e) {}
+}, 3000);
+
+// ── 수감자 이동 제한 (150ms마다 위치 클램프) ──
+setInterval(function() {
+  if (!prisonState.imprisoned) return;
+  if (typeof P === 'undefined' || typeof playerGroup === 'undefined') return;
+
+  var dx = P.x - PRISON_CX;
+  var dz = P.y - PRISON_CZ;
+  var dist = Math.sqrt(dx * dx + dz * dz);
+
+  if (dist > PRISON_RADIUS) {
+    var r = PRISON_RADIUS / dist;
+    P.x = PRISON_CX + dx * r;
+    P.y = PRISON_CZ + dz * r;
+    if (playerGroup) playerGroup.position.set(P.x, P.h || 0, P.y);
+  }
+}, 150);
+
+// ════════════════════════════════════════════════════════
+//  👁️ 관전 모드 (Spectator Mode) — 향상된 기능
+// ════════════════════════════════════════════════════════
+(function() {
+  if (typeof isAdmin !== 'function') return;
+
+  // ── ① broadcastPlayerPosition 패치: 관전 중이면 spectator 플래그 포함 송출 ──
+  var _origBroadcastSpec = broadcastPlayerPosition;
+  broadcastPlayerPosition = function() {
+    // 관전 중인 관리자 → 자기 위치를 spectator:true 로 전송 (다른 플레이어가 렌더링 제외)
+    if (adminState.spectateTarget && isAdmin() && currentUsername && isCloudConnected) {
+      fetch(DB_URL + 'online_players/' + encodeURIComponent(currentUsername) + '.json', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: P.x, y: P.y, angle: P.angle, t: Date.now(), spectator: true })
+      }).catch(function() {});
+      return;
+    }
+    _origBroadcastSpec();
+  };
+
+  // ── ② 관전 HUD 오버레이 생성 ──
+  var spHud = document.createElement('div');
+  spHud.id = 'spectator-hud';
+  Object.assign(spHud.style, {
+    display: 'none',
+    position: 'fixed',
+    bottom: '28px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: 'rgba(0,0,0,0.72)',
+    border: '1.5px solid rgba(0,229,255,0.55)',
+    borderRadius: '40px',
+    padding: '8px 22px',
+    color: '#fff',
+    fontSize: '13px',
+    pointerEvents: 'none',
+    zIndex: '6000',
+    backdropFilter: 'blur(6px)',
+    letterSpacing: '0.3px',
+    whiteSpace: 'nowrap',
+  });
+  document.body.appendChild(spHud);
+
+  function updateSpHud() {
+    var tgt = adminState.spectateTarget;
+    if (!tgt) { spHud.style.display = 'none'; return; }
+    spHud.style.display = 'block';
+    spHud.innerHTML = '👁️ &nbsp;<strong style="color:#00e5ff;">' + tgt + '</strong>&nbsp; 관전 중 &nbsp;·&nbsp; <span style="color:rgba(255,255,255,0.5);font-size:11px;">플레이어 탭 → 중지</span>';
+  }
+
+  // ── ③ adminStartSpectateTarget / adminStopSpectate 래핑 ──
+  var _origStartSpec = adminStartSpectateTarget;
+  adminStartSpectateTarget = function(uname) {
+    _origStartSpec(uname);
+    // 관전 시작 직후 자신의 플레이어 모델 숨기기 (로컬)
+    if (typeof playerGroup !== 'undefined' && playerGroup) {
+      playerGroup.visible = false;
+    }
+    updateSpHud();
+  };
+
+  var _origStopSpec = adminStopSpectate;
+  adminStopSpectate = function() {
+    _origStopSpec();
+    // 관전 종료 → 자신의 모델 다시 표시
+    if (typeof playerGroup !== 'undefined' && playerGroup) {
+      playerGroup.visible = true;
+    }
+    // 위치 재브로드캐스트 (spectator 플래그 제거)
+    setTimeout(broadcastPlayerPosition, 200);
+    updateSpHud();
+  };
+
+  // ── ④ 플레이어 목록 "관전" 버튼 클릭 시 관전 모드 자동 활성 ──
+  // adminRefreshPlayerList 이미 관전 버튼 포함 — 추가 작업 불필요
+})();
 
