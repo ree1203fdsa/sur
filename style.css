@@ -2609,9 +2609,18 @@ body.admin-god-active #hud::after {
    📱 모바일 터치 컨트롤
 ═══════════════════════════════════════════ */
 
-/* 터치 기기에서만 표시 */
-@media (pointer: coarse) {
-  #m-controls { display: block !important; }
+/* 모바일 전용 터치 컨트롤 — 데스크톱에서는 숨김 */
+#m-controls {
+  display: none !important;
+}
+
+body.is-mobile-device #m-controls {
+  display: block !important;
+}
+
+/* 모바일 화면 최적화 */
+@media (max-width: 1024px) and (pointer: coarse) {
+  body.is-mobile-device #m-controls { display: block !important; }
 
   /* 로그인 화면 모바일 최적화 */
   #lock-screen {

@@ -1889,6 +1889,7 @@ function render(ts) {
     if (rainParticles.visible) rainParticles.material.opacity = rainIntensity * 0.6;
   }
   updateRain(dt);
+  if (typeof updateAdminEntities === 'function') updateAdminEntities(dt);
 
   // ─ Dynamic Day/Night Cycle ─
   // gMin: 0=midnight, 300=5am dawn start, 480=8am full day, 1080=6pm dusk, 1260=9pm full night
@@ -8878,12 +8879,35 @@ initAdminPanel = function() {
 //  📱 모바일 터치 컨트롤
 // ════════════════════════════════════════════
 
-var isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+function checkIsMobile() {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+         (window.innerWidth <= 1024 && (('ontouchstart' in window) || (navigator.maxTouchPoints > 0)));
+}
+
+var isMobile = checkIsMobile();
+var mCtrl = document.getElementById('m-controls');
 
 if (isMobile) {
-  // ── 컨트롤 패널 표시 ──
-  var mCtrl = document.getElementById('m-controls');
+  document.body.classList.add('is-mobile-device');
   if (mCtrl) mCtrl.style.display = 'block';
+} else {
+  document.body.classList.remove('is-mobile-device');
+  if (mCtrl) mCtrl.style.display = 'none';
+}
+
+window.addEventListener('resize', function() {
+  var mobileNow = checkIsMobile();
+  var ctrl = document.getElementById('m-controls');
+  if (mobileNow) {
+    document.body.classList.add('is-mobile-device');
+    if (ctrl) ctrl.style.display = 'block';
+  } else {
+    document.body.classList.remove('is-mobile-device');
+    if (ctrl) ctrl.style.display = 'none';
+  }
+});
+
+if (isMobile) {
 
   // ── 포인터락 요청 비활성화 (모바일 미지원) ──
   var _origRequestPointerLock = HTMLElement.prototype.requestPointerLock;
@@ -9126,4 +9150,229 @@ if (isMobile) {
     });
   };
 })();
+
+
+// ════════════════════════════════════════════════════════
+//   🌤️ 환경/시간 조작 & 🚗 3D 탈것/경호원 스폰 (ree1203 전용)
+// ════════════════════════════════════════════════════════
+
+function adminSetTimePreset(preset) {
+  if (preset === 'dawn')  gMin = 300;
+  if (preset === 'noon')  gMin = 720;
+  if (preset === 'dusk')  gMin = 1080;
+  if (preset === 'night') gMin = 0;
+  var hrs = strPad(Math.floor(gMin / 60), 2);
+  var mins = strPad(Math.floor(gMin % 60), 2);
+  adminLogAction("시간 조작: " + hrs + ":" + mins + " (" + preset + ")");
+  updateAdminEnvStatus();
+}
+
+function adminSetTimeSpeed(spd) {
+  adminState.timeSpeed = spd;
+  adminLogAction("시간 배속 설정: " + spd + "x");
+  updateAdminEnvStatus();
+}
+
+function adminSetWeather(w) {
+  weatherState = w;
+  weatherDuration = 999999;
+  adminLogAction("날씨 변경: " + w);
+  updateAdminEnvStatus();
+}
+
+function updateAdminEnvStatus() {
+  var el = document.getElementById('admin-env-status');
+  if (!el) return;
+  var hrs = strPad(Math.floor(gMin / 60), 2);
+  var mins = strPad(Math.floor(gMin % 60), 2);
+  var spd = adminState.timeSpeed || 1;
+  var wName = weatherLabels[weatherState] || weatherState;
+  el.textContent = "현재 시간: " + hrs + ":" + mins + " | 배속: " + spd + "x | 날씨: " + wName;
+}
+
+// ── 3D 탈것 스폰 ──
+var adminSpawnedVehicles = [];
+
+function adminSpawnVehicle(type) {
+  if (!scene) return;
+  var px = P.x + Math.sin(P.angle) * 4;
+  var py = P.y - Math.cos(P.angle) * 4;
+  var grp = new THREE.Group();
+
+  if (type === 'chopper') {
+    // 🚁 대통령 전용 헬기 (동체 + 회전 로터 + 하단 서치라이트)
+    var bodyMat = new THREE.MeshStandardMaterial({ color: 0x071126, metalness: 0.85, roughness: 0.2 });
+    var body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 0.9), bodyMat);
+    body.castShadow = true;
+    grp.add(body);
+
+    var glassMat = new THREE.MeshStandardMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.7, roughness: 0.1 });
+    var glass = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 0.85), glassMat);
+    glass.position.set(0.7, 0.15, 0);
+    grp.add(glass);
+
+    var tail = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.25, 0.25), bodyMat);
+    tail.position.set(-1.6, 0.2, 0);
+    grp.add(tail);
+
+    var mainRotor = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.04, 0.3), new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+    mainRotor.position.set(0, 0.65, 0);
+    grp.add(mainRotor);
+    grp.userData.rotor = mainRotor;
+
+    var sLight = new THREE.PointLight(0x00e5ff, 2.5, 14);
+    sLight.position.set(0, -0.4, 0);
+    grp.add(sLight);
+
+    grp.position.set(px, 1.4, py);
+    grp.userData.type = 'chopper';
+    adminLogAction("🚁 대통령 전용 헬기 스폰 완료");
+  } else if (type === 'hypercar') {
+    // 🏎️ 네오 하이퍼카 (네온 휠 + 후면 스포일러 + 듀얼 헤드라이트)
+    var carMat = new THREE.MeshStandardMaterial({ color: 0x120826, metalness: 0.95, roughness: 0.1 });
+    var body = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.48, 1.1), carMat);
+    body.castShadow = true;
+    grp.add(body);
+
+    var spoiler = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 1.0), new THREE.MeshBasicMaterial({ color: 0xa855f7 }));
+    spoiler.position.set(-1.1, 0.3, 0);
+    grp.add(spoiler);
+
+    var wheelMat = new THREE.MeshBasicMaterial({ color: 0x00c8ff });
+    [[-0.7, 0.55], [-0.7, -0.55], [0.7, 0.55], [0.7, -0.55]].forEach(function(pos) {
+      var w = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 16), wheelMat);
+      w.rotation.x = Math.PI / 2;
+      w.position.set(pos[0], -0.15, pos[1]);
+      grp.add(w);
+    });
+
+    var hLight = new THREE.PointLight(0x00e5ff, 2, 12);
+    hLight.position.set(1.2, 0, 0);
+    grp.add(hLight);
+
+    grp.position.set(px, 0.35, py);
+    grp.userData.type = 'hypercar';
+    adminLogAction("🏎️ 네오 하이퍼카 스폰 완료");
+  } else if (type === 'policecar') {
+    // 🚔 고속 경찰차 (적/청 점멸 경광등)
+    var pMat = new THREE.MeshStandardMaterial({ color: 0x0a0f1d, metalness: 0.8, roughness: 0.2 });
+    var body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.6, 1.0), pMat);
+    body.castShadow = true;
+    grp.add(body);
+
+    var sirenR = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.35), new THREE.MeshBasicMaterial({ color: 0xff0044 }));
+    sirenR.position.set(0, 0.4, 0.2);
+    grp.add(sirenR);
+    var sirenB = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.35), new THREE.MeshBasicMaterial({ color: 0x0066ff }));
+    sirenB.position.set(0, 0.4, -0.2);
+    grp.add(sirenB);
+    grp.userData.sirenR = sirenR;
+    grp.userData.sirenB = sirenB;
+
+    grp.position.set(px, 0.4, py);
+    grp.userData.type = 'policecar';
+    adminLogAction("🚔 고속 경찰차 스폰 완료");
+  }
+
+  grp.rotation.y = P.angle;
+  scene.add(grp);
+  adminSpawnedVehicles.push(grp);
+  updateAdminSpawnStatus();
+}
+
+function adminClearVehicles() {
+  adminSpawnedVehicles.forEach(function(v) {
+    if (scene) scene.remove(v);
+  });
+  adminSpawnedVehicles = [];
+  adminLogAction("스폰된 탈것 전체 회수 완료");
+  updateAdminSpawnStatus();
+}
+
+// ── 경호원 소환 ──
+var adminGuards = [];
+
+function adminSpawnGuards(count) {
+  adminDismissGuards();
+
+  for (var i = 0; i < count; i++) {
+    var gGroup = new THREE.Group();
+
+    // 정장 몸통
+    var suitMat = new THREE.MeshStandardMaterial({ color: 0x0b0e14, roughness: 0.3 });
+    var body = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.9, 0.3), suitMat);
+    body.position.y = 0.85;
+    body.castShadow = true;
+    gGroup.add(body);
+
+    // 머리 & 선글라스
+    var headMat = new THREE.MeshStandardMaterial({ color: 0xf5c999, roughness: 0.6 });
+    var head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 16, 16), headMat);
+    head.position.y = 1.45;
+    gGroup.add(head);
+
+    var glasses = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.08, 0.12), new THREE.MeshBasicMaterial({ color: 0x050505 }));
+    glasses.position.set(0.12, 1.47, 0);
+    gGroup.add(glasses);
+
+    var angleOffset = (i / count) * Math.PI * 2;
+    gGroup.position.set(P.x + Math.cos(angleOffset) * 1.8, 0, P.y + Math.sin(angleOffset) * 1.8);
+    gGroup.userData = { offsetAngle: angleOffset, dist: 1.8 };
+
+    scene.add(gGroup);
+    adminGuards.push(gGroup);
+  }
+
+  adminLogAction("대통령 밀착 경호대 " + count + "명 소환 완료");
+  updateAdminSpawnStatus();
+}
+
+function adminDismissGuards() {
+  adminGuards.forEach(function(g) {
+    if (scene) scene.remove(g);
+  });
+  adminGuards = [];
+  adminLogAction("경호대 해산 완료");
+  updateAdminSpawnStatus();
+}
+
+function updateAdminSpawnStatus() {
+  var el = document.getElementById('admin-spawn-status');
+  if (!el) return;
+  var vCount = adminSpawnedVehicles.length;
+  var gCount = adminGuards.length;
+  el.textContent = "스폰된 탈것: " + vCount + "대 | 경호원: " + gCount + "명 소환 중";
+}
+
+function updateAdminEntities(dt) {
+  // 스폰 탈것 애니메이션
+  adminSpawnedVehicles.forEach(function(v) {
+    if (v.userData.type === 'chopper' && v.userData.rotor) {
+      v.userData.rotor.rotation.y += dt * 28;
+    }
+    if (v.userData.type === 'policecar' && v.userData.sirenR && v.userData.sirenB) {
+      var blink = Math.sin(performance.now() * 0.012) > 0;
+      v.userData.sirenR.visible = blink;
+      v.userData.sirenB.visible = !blink;
+    }
+  });
+
+  // 경호원 추종 및 밀착 대형
+  if (adminGuards.length > 0) {
+    var pMoved = Math.abs(P.vx) > 0.01 || Math.abs(P.vy) > 0.01;
+    adminGuards.forEach(function(g, idx) {
+      var tx = P.x + Math.cos(P.angle + g.userData.offsetAngle) * g.userData.dist;
+      var tz = P.y + Math.sin(P.angle + g.userData.offsetAngle) * g.userData.dist;
+
+      g.position.x += (tx - g.position.x) * dt * 6;
+      g.position.z += (tz - g.position.z) * dt * 6;
+
+      if (pMoved) {
+        g.rotation.y = P.angle;
+      } else {
+        g.rotation.y = P.angle + Math.sin(performance.now() * 0.002 + idx) * 0.4;
+      }
+    });
+  }
+}
 
