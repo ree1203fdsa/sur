@@ -995,8 +995,8 @@ function createFloorTexture() {
   canvas.height = 1024;
   const ctx = canvas.getContext('2d');
 
-  // Ground base
-  ctx.fillStyle = '#0b0e14';
+  // Ground base — grass green
+  ctx.fillStyle = '#4a7c3f';
   ctx.fillRect(0, 0, 1024, 1024);
 
   const scale = 1024 / 64; // 16 pixels per grid tile
@@ -1008,42 +1008,81 @@ function createFloorTexture() {
       const py = y * scale;
 
       if (t === 0) {
-        // Road
-        ctx.fillStyle = '#0f1320';
+        // Road — gray asphalt
+        ctx.fillStyle = '#5a5a5a';
         ctx.fillRect(px, py, scale, scale);
 
-        // Thin blue road lines
-        ctx.strokeStyle = 'rgba(0, 200, 255, 0.1)';
-        ctx.lineWidth = 1;
+        // Asphalt texture noise
+        for (let i = 0; i < 6; i++) {
+          const nx = px + Math.random() * scale;
+          const ny = py + Math.random() * scale;
+          ctx.fillStyle = 'rgba(0,0,0,0.07)';
+          ctx.fillRect(nx, ny, 2, 2);
+        }
+
+        // Road edge lines
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 0.5;
         ctx.strokeRect(px, py, scale, scale);
 
-        // Center lines on major avenues (grid pattern roads)
+        // Center dashed lines on major avenues
         const onMainX = (x % 7 === 0);
         const onMainY = (y % 7 === 0);
         if (onMainX || onMainY) {
-          ctx.strokeStyle = 'rgba(255, 176, 48, 0.3)';
-          ctx.lineWidth = 1;
-          ctx.setLineDash([2, 2]);
+          ctx.strokeStyle = 'rgba(255, 230, 50, 0.7)';
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([3, 3]);
           ctx.beginPath();
           if (onMainX) {
-            ctx.moveTo(px + scale/2, py);
-            ctx.lineTo(px + scale/2, py + scale);
+            ctx.moveTo(px + scale / 2, py);
+            ctx.lineTo(px + scale / 2, py + scale);
           }
           if (onMainY) {
-            ctx.moveTo(px, py + scale/2);
-            ctx.lineTo(px + scale, py + scale/2);
+            ctx.moveTo(px, py + scale / 2);
+            ctx.lineTo(px + scale, py + scale / 2);
+          }
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          // White center dashes on normal roads
+          ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+          ctx.lineWidth = 0.8;
+          ctx.setLineDash([2, 4]);
+          ctx.beginPath();
+          if (Math.random() > 0.5) {
+            ctx.moveTo(px + scale / 2, py);
+            ctx.lineTo(px + scale / 2, py + scale);
+          } else {
+            ctx.moveTo(px, py + scale / 2);
+            ctx.lineTo(px + scale, py + scale / 2);
           }
           ctx.stroke();
           ctx.setLineDash([]);
         }
       } else if (t === 9) {
-        // Eco park lawn
-        ctx.fillStyle = '#081e0f';
+        // Eco park — bright grass
+        const g1 = '#4e8b40', g2 = '#56963f', g3 = '#3f7035';
+        const variants = [g1, g2, g3];
+        ctx.fillStyle = variants[(x + y) % 3];
         ctx.fillRect(px, py, scale, scale);
+        // Grass texture blades
+        ctx.strokeStyle = 'rgba(80,160,60,0.3)';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < 4; i++) {
+          const bx = px + (i / 4) * scale + Math.random() * 2;
+          ctx.beginPath();
+          ctx.moveTo(bx, py + scale);
+          ctx.lineTo(bx + 1, py + scale * 0.6);
+          ctx.stroke();
+        }
       } else {
-        // Building footprint
-        ctx.fillStyle = '#05070a';
+        // Building footprint — concrete
+        ctx.fillStyle = '#6b6b6b';
         ctx.fillRect(px, py, scale, scale);
+        // Slight border to show building base
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(px + 0.5, py + 0.5, scale - 1, scale - 1);
       }
     }
   }
