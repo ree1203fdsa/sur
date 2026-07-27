@@ -324,6 +324,11 @@ async function fetchOnlinePlayers() {
         delete otherPlayers[uname];
       }
     }
+    // 플레이어 목록 갱신
+    const total = Object.keys(otherPlayers).length + 1;
+    const badge = document.getElementById('online-count-badge');
+    if (badge) badge.textContent = total;
+    if (playerListOpen && typeof updatePlayerList === 'function') updatePlayerList();
   } catch (e) { /* silent */ }
 }
 
@@ -337,10 +342,14 @@ async function removePlayerFromOnline() {
 function startMultiplayer() {
   if (multiplayerBroadcastInterval) clearInterval(multiplayerBroadcastInterval);
   if (multiplayerFetchInterval) clearInterval(multiplayerFetchInterval);
+  if (chatFetchIntervalId) clearInterval(chatFetchIntervalId);
   broadcastPlayerPosition();
   fetchOnlinePlayers();
+  fetchChatMessages();
   multiplayerBroadcastInterval = setInterval(broadcastPlayerPosition, 300);
   multiplayerFetchInterval = setInterval(fetchOnlinePlayers, 1500);
+  chatFetchIntervalId = setInterval(fetchChatMessages, 2500);
+  setTimeout(_applyStoredResolution, 500);
 }
 
 window.addEventListener('beforeunload', removePlayerFromOnline);
@@ -390,6 +399,7 @@ async function saveUser(username, password) {
     gMin: gMin,
     dayN: dayN,
     portfolio: P.portfolio,
+    ownedProperties: P.ownedProperties || [],
     simState: {
       treasury: Sim.treasury,
       gdp: Sim.gdp,
@@ -498,6 +508,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     gMin = userData.gMin !== undefined ? userData.gMin : 480;
     dayN = userData.dayN !== undefined ? userData.dayN : 1;
     P.portfolio = userData.portfolio || { NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0 };
+    P.ownedProperties = userData.ownedProperties || [];
 
     Sim.init();
     if (userData.simState) {
@@ -2134,6 +2145,12 @@ function render(ts) {
     op.group.rotation.y = -op.angle + Math.PI;
   }
 
+  // 말풍선 위치 업데이트
+  if (typeof updateSpeechBubbles === 'function') updateSpeechBubbles();
+
+  // 임대 수입 체크 (하루 1회)
+  if (typeof collectRent === 'function') collectRent();
+
   // Draw other players on minimap
   for (const [uname, op] of Object.entries(otherPlayers)) {
     const px = (op.x - offX) * sc;
@@ -2762,22 +2779,39 @@ function renderRealEstate() {
   const container = document.getElementById('realestate-container');
   if (!container) return;
   container.innerHTML = '';
-  
+  if (!P.ownedProperties) P.ownedProperties = [];
+
+  // 보유 자산 요약
+  const totalRent = P.ownedProperties.reduce((sum, id) => {
+    const h = Sim.houses.find(x => x.id === id);
+    return sum + (h ? h.rent : 0);
+  }, 0);
+  const summary = document.createElement('div');
+  summary.className = 'db-card mini-card';
+  summary.style = 'grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;';
+  summary.innerHTML = `<span>🏠 보유 ${P.ownedProperties.length}채</span><strong>일일 임대 수입: ₦${totalRent.toLocaleString()}</strong>`;
+  container.appendChild(summary);
+
   Sim.houses.forEach(h => {
+    const owned = P.ownedProperties.includes(h.id);
+    const canAfford = P.money >= h.price;
     const card = document.createElement('div');
-    card.className = 'db-card re-card';
+    card.className = 'db-card re-card' + (owned ? ' re-owned' : '');
     card.innerHTML = `
-      <div class="re-title">🏠 ${h.name}</div>
+      <div class="re-title">${owned ? '✅' : '🏠'} ${h.name}</div>
       <div class="re-specs">
-        면적: ${h.size}㎡<br>
-        방 ${h.rooms}개 / 욕실 ${h.baths}개<br>
-        수도/광랜: ${h.net}<br>
-        관리비: ₦${h.maintenanceFee.toLocaleString()}/월<br>
-        전기/수도: ${h.elec}kWh / ${h.water}t
+        면적: ${h.size}㎡ · 방 ${h.rooms}개 / 욕실 ${h.baths}개<br>
+        관리비: ₦${h.maintenanceFee.toLocaleString()}/월
       </div>
       <div class="re-price">
-        매매: ₦${h.price.toLocaleString()}<br>
-        월세: ₦${h.rent.toLocaleString()}/월
+        매매가: ₦${h.price.toLocaleString()}<br>
+        임대 수입: <strong>₦${h.rent.toLocaleString()}/일</strong>
+      </div>
+      <div class="re-actions">
+        ${owned
+          ? `<button class="trade-btn sell" onclick="sellProperty(${h.id})">매도 (75%)</button>`
+          : `<button class="trade-btn buy" onclick="buyProperty(${h.id})" ${canAfford ? '' : 'disabled'}>매수</button>`
+        }
       </div>
     `;
     container.appendChild(card);
@@ -3532,6 +3566,369 @@ function toggleMute() {
   if (audioCtx) {
     bgmGain.gain.setTargetAtTime(isMuted ? 0 : 0.06, audioCtx.currentTime, 0.2);
     if (rainNoiseGain) rainNoiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.2);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//   ⚙️ 설정 패널
+// ══════════════════════════════════════════════════════
+let settingsOpen = false;
+let currentLang = localStorage.getItem('neoLang') || 'ko';
+let masterVolume = parseFloat(localStorage.getItem('neoVolume') || '0.7');
+
+function toggleSettings() {
+  const panel = document.getElementById('settings-panel');
+  if (!panel) return;
+  settingsOpen = !settingsOpen;
+  panel.style.display = settingsOpen ? 'block' : 'none';
+  if (settingsOpen) _initSettingsUI();
+}
+
+function _initSettingsUI() {
+  // 언어 버튼 활성 상태
+  document.getElementById('lang-ko-btn')?.classList.toggle('active', currentLang === 'ko');
+  document.getElementById('lang-en-btn')?.classList.toggle('active', currentLang === 'en');
+  // 볼륨 슬라이더
+  const vol = Math.round(masterVolume * 100);
+  const slider = document.getElementById('volume-slider');
+  if (slider) slider.value = vol;
+  const valEl = document.getElementById('volume-val');
+  if (valEl) valEl.textContent = vol + '%';
+  // 게스트 시 비밀번호 섹션 숨김
+  if (currentUsername === '게스트' || currentUsername === '') {
+    document.body.classList.add('guest-mode');
+  } else {
+    document.body.classList.remove('guest-mode');
+  }
+}
+
+function changeLanguage(lang) {
+  currentLang = lang;
+  localStorage.setItem('neoLang', lang);
+  document.getElementById('lang-ko-btn')?.classList.toggle('active', lang === 'ko');
+  document.getElementById('lang-en-btn')?.classList.toggle('active', lang === 'en');
+  // i18n 텍스트 교체
+  document.querySelectorAll('.i18n').forEach(el => {
+    const text = el.getAttribute('data-' + lang);
+    if (text) el.textContent = text;
+  });
+  // 비밀번호 입력 필드 placeholder 교체
+  const placeholders = {
+    ko: ['현재 비밀번호', '새 비밀번호', '새 비밀번호 확인'],
+    en: ['Current password', 'New password', 'Confirm new password']
+  };
+  const inputs = document.querySelectorAll('#settings-pw-section .settings-input');
+  inputs.forEach((inp, i) => { if (placeholders[lang][i]) inp.placeholder = placeholders[lang][i]; });
+}
+
+function setMasterVolume(val) {
+  masterVolume = val / 100;
+  localStorage.setItem('neoVolume', masterVolume);
+  const valEl = document.getElementById('volume-val');
+  if (valEl) valEl.textContent = val + '%';
+  if (!audioCtx) return;
+  if (!isMuted) {
+    bgmGain.gain.setTargetAtTime(0.06 * masterVolume, audioCtx.currentTime, 0.05);
+  }
+  if (rainNoiseGain) {
+    rainNoiseGain.gain.setTargetAtTime(masterVolume > 0 ? 0.04 * masterVolume : 0, audioCtx.currentTime, 0.05);
+  }
+}
+
+function setResolution(ratio) {
+  renderer.setPixelRatio(ratio);
+  // 버튼 활성 상태 업데이트
+  document.querySelectorAll('.settings-res-btn').forEach(btn => btn.classList.remove('active'));
+  event.target.closest('.settings-res-btn')?.classList.add('active');
+  localStorage.setItem('neoPixelRatio', ratio);
+}
+
+async function logoutPlayer() {
+  if (!confirm(currentLang === 'en' ? 'Are you sure you want to logout?' : '로그아웃 하시겠습니까?')) return;
+  await removePlayerFromOnline();
+  // 멀티플레이어 인터벌 중지
+  if (window.multiplayerBroadcastInterval) clearInterval(multiplayerBroadcastInterval);
+  if (window.multiplayerFetchInterval) clearInterval(multiplayerFetchInterval);
+  currentUsername = '';
+  currentPassword = '';
+  // 설정 패널 닫기
+  settingsOpen = false;
+  const panel = document.getElementById('settings-panel');
+  if (panel) panel.style.display = 'none';
+  // 모바일 컨트롤 숨기기
+  document.body.classList.remove('game-active');
+  // 로그인 화면 표시
+  document.getElementById('lock-screen').style.display = 'flex';
+}
+
+async function changePassword() {
+  if (currentUsername === '게스트' || !currentUsername) return;
+  const oldPw = document.getElementById('pw-old')?.value.trim();
+  const newPw = document.getElementById('pw-new')?.value.trim();
+  const confirm2 = document.getElementById('pw-confirm')?.value.trim();
+  if (!oldPw || !newPw || !confirm2) {
+    showNotice(currentLang === 'en' ? '⚠️ All fields required.' : '⚠️ 모든 항목을 입력해 주세요.'); return;
+  }
+  if (oldPw !== currentPassword) {
+    showNotice(currentLang === 'en' ? '❌ Current password incorrect.' : '❌ 현재 비밀번호가 틀렸습니다.'); return;
+  }
+  if (newPw !== confirm2) {
+    showNotice(currentLang === 'en' ? '❌ New passwords do not match.' : '❌ 새 비밀번호가 일치하지 않습니다.'); return;
+  }
+  if (newPw.length < 4) {
+    showNotice(currentLang === 'en' ? '❌ Password too short (min 4 chars).' : '❌ 비밀번호는 4자 이상이어야 합니다.'); return;
+  }
+  currentPassword = newPw;
+  await saveUser(currentUsername, currentPassword);
+  document.getElementById('pw-old').value = '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  showNotice(currentLang === 'en' ? '✅ Password changed.' : '✅ 비밀번호가 변경되었습니다.');
+}
+
+// 저장된 해상도 설정 복원 (게임 시작 후 renderer 준비되면 적용)
+function _applyStoredResolution() {
+  const saved = localStorage.getItem('neoPixelRatio');
+  if (saved && renderer) renderer.setPixelRatio(parseFloat(saved));
+  // 저장된 볼륨 UI 반영
+  const savedVol = parseFloat(localStorage.getItem('neoVolume') || '0.7');
+  masterVolume = savedVol;
+  // 저장된 언어 반영
+  if (currentLang !== 'ko') changeLanguage(currentLang);
+}
+
+// ══════════════════════════════════════════════════════
+//   💬 채팅 시스템
+// ══════════════════════════════════════════════════════
+let chatOpen = false;
+let chatLastTs = 0;
+let chatFetchIntervalId = null;
+let chatUnread = 0;
+const chatBubbles = {};  // { username: { el, expiry } }
+
+function toggleChat() {
+  chatOpen = !chatOpen;
+  const panel = document.getElementById('chat-panel');
+  if (panel) panel.style.display = chatOpen ? 'flex' : 'none';
+  if (chatOpen) {
+    chatUnread = 0;
+    const badge = document.getElementById('chat-unread-badge');
+    if (badge) badge.style.display = 'none';
+    document.getElementById('chat-messages')?.scrollTo(0, 99999);
+  }
+}
+
+async function sendChat() {
+  if (!currentUsername || currentUsername === '게스트') {
+    showNotice('💬 채팅은 로그인 후 이용 가능합니다.'); return;
+  }
+  const input = document.getElementById('chat-input');
+  const msg = input?.value.trim();
+  if (!msg) return;
+  input.value = '';
+  const payload = { u: currentUsername, m: msg, t: Date.now() };
+  try {
+    await fetch(`${DB_URL}chat/${payload.t}_${encodeURIComponent(currentUsername)}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch(e) { showNotice('❌ 채팅 전송 실패'); }
+}
+
+function sendEmoji(emoji) {
+  if (!currentUsername || currentUsername === '게스트') return;
+  // 말풍선 + 플로팅 이모지
+  _showFloatEmoji(emoji);
+  // 채팅으로 전송
+  const payload = { u: currentUsername, m: emoji, t: Date.now() };
+  fetch(`${DB_URL}chat/${payload.t}_${encodeURIComponent(currentUsername)}.json`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
+}
+
+function _showFloatEmoji(emoji) {
+  const canvas = document.getElementById('cvs') || document.querySelector('canvas');
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const el = document.createElement('div');
+  el.className = 'float-emoji';
+  el.textContent = emoji;
+  el.style.left = (rect.left + rect.width / 2) + 'px';
+  el.style.top  = (rect.top  + rect.height / 2) + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1900);
+}
+
+async function fetchChatMessages() {
+  if (!isCloudConnected) return;
+  try {
+    const res = await fetch(`${DB_URL}chat.json?orderBy="$key"&limitToLast=40`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data) return;
+    const msgs = Object.values(data).sort((a, b) => a.t - b.t);
+    const newMsgs = msgs.filter(m => m.t > chatLastTs);
+    if (newMsgs.length === 0) return;
+    chatLastTs = msgs[msgs.length - 1].t;
+    const container = document.getElementById('chat-messages');
+    newMsgs.forEach(msg => {
+      // 말풍선 업데이트
+      if (msg.u !== currentUsername) {
+        showSpeechBubble(msg.u, msg.m);
+        if (!chatOpen) {
+          chatUnread++;
+          const badge = document.getElementById('chat-unread-badge');
+          if (badge) { badge.style.display = 'flex'; badge.textContent = chatUnread > 9 ? '9+' : chatUnread; }
+        }
+      } else {
+        showSpeechBubble('__self__', msg.m);
+      }
+      // 채팅창에 추가
+      if (!container) return;
+      const div = document.createElement('div');
+      const isSelf = msg.u === currentUsername;
+      div.className = 'chat-msg ' + (isSelf ? 'self-msg' : 'other-msg');
+      div.innerHTML = `<span class="chat-name">${msg.u}</span><span class="chat-text">${_escapeHtml(msg.m)}</span>`;
+      container.appendChild(div);
+      // 최대 80개 유지
+      while (container.children.length > 80) container.removeChild(container.firstChild);
+    });
+    if (chatOpen) container?.scrollTo(0, 99999);
+  } catch(e) { /* silent */ }
+}
+
+function _escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showSpeechBubble(username, message) {
+  const layer = document.getElementById('speech-bubbles-layer');
+  if (!layer) return;
+  let el = chatBubbles[username]?.el;
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'speech-bubble';
+    layer.appendChild(el);
+    chatBubbles[username] = { el };
+  }
+  el.textContent = message;
+  el.style.opacity = '1';
+  chatBubbles[username].expiry = Date.now() + 5000;
+  chatBubbles[username].message = message;
+}
+
+function updateSpeechBubbles() {
+  const now = Date.now();
+  for (const [uname, bub] of Object.entries(chatBubbles)) {
+    if (!bub.el) continue;
+    // 만료 체크
+    if (now > bub.expiry) { bub.el.style.opacity = '0'; continue; }
+    // 3D → 2D 위치 계산
+    let worldPos;
+    if (uname === '__self__') {
+      worldPos = new THREE.Vector3(P.x, 2.2, P.y);
+    } else {
+      const op = otherPlayers[uname];
+      if (!op) { bub.el.style.opacity = '0'; continue; }
+      worldPos = new THREE.Vector3(op.x, 2.2, op.y);
+    }
+    worldPos.project(camera);
+    const hw = window.innerWidth / 2;
+    const hh = window.innerHeight / 2;
+    const sx = worldPos.x *  hw + hw;
+    const sy = worldPos.y * -hh + hh;
+    // 화면 밖이면 숨김
+    if (worldPos.z > 1 || sx < 0 || sx > window.innerWidth || sy < 0 || sy > window.innerHeight) {
+      bub.el.style.opacity = '0'; continue;
+    }
+    bub.el.style.opacity = '1';
+    bub.el.style.left = sx + 'px';
+    bub.el.style.top  = sy + 'px';
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//   👥 플레이어 목록
+// ══════════════════════════════════════════════════════
+let playerListOpen = false;
+
+function togglePlayerList() {
+  playerListOpen = !playerListOpen;
+  const panel = document.getElementById('player-list-panel');
+  if (panel) panel.style.display = playerListOpen ? 'block' : 'none';
+  if (playerListOpen) updatePlayerList();
+}
+
+function updatePlayerList() {
+  const body = document.getElementById('player-list-body');
+  if (!body) return;
+  body.innerHTML = '';
+  // 자기 자신
+  const selfEl = document.createElement('div');
+  selfEl.className = 'pl-item';
+  selfEl.innerHTML = `<div class="pl-dot self"></div><div class="pl-name">${currentUsername || '나'}</div><div class="pl-you">나</div>`;
+  body.appendChild(selfEl);
+  // 다른 플레이어
+  for (const uname of Object.keys(otherPlayers)) {
+    const el = document.createElement('div');
+    el.className = 'pl-item';
+    el.innerHTML = `<div class="pl-dot"></div><div class="pl-name">${uname}</div>`;
+    body.appendChild(el);
+  }
+  // 접속자 수 뱃지
+  const total = Object.keys(otherPlayers).length + 1;
+  const badge = document.getElementById('online-count-badge');
+  if (badge) badge.textContent = total;
+}
+
+// ══════════════════════════════════════════════════════
+//   🏢 부동산 매수 / 매도
+// ══════════════════════════════════════════════════════
+function buyProperty(houseId) {
+  if (!P.ownedProperties) P.ownedProperties = [];
+  if (P.ownedProperties.includes(houseId)) { showNotice('이미 소유 중인 부동산입니다.'); return; }
+  const h = Sim.houses.find(x => x.id === houseId);
+  if (!h) return;
+  if (P.money < h.price) { showNotice(`💰 잔액 부족! ₦${h.price.toLocaleString()} 필요`); return; }
+  P.money -= h.price;
+  P.ownedProperties.push(houseId);
+  showNotice(`🏠 ${h.name} 구매 완료! 매달 ₦${h.rent.toLocaleString()} 임대 수입`);
+  renderRealEstate();
+  document.getElementById('mv').textContent = P.money.toLocaleString();
+}
+
+function sellProperty(houseId) {
+  if (!P.ownedProperties) return;
+  const idx = P.ownedProperties.indexOf(houseId);
+  if (idx === -1) return;
+  const h = Sim.houses.find(x => x.id === houseId);
+  if (!h) return;
+  const sellPrice = Math.round(h.price * 0.75);
+  P.money += sellPrice;
+  P.ownedProperties.splice(idx, 1);
+  showNotice(`🏠 ${h.name} 매도 완료! ₦${sellPrice.toLocaleString()} 수령`);
+  renderRealEstate();
+  document.getElementById('mv').textContent = P.money.toLocaleString();
+}
+
+// ── 부동산 임대 수입 (게임 하루마다) ──
+let _lastRentDay = -1;
+function collectRent() {
+  if (!P.ownedProperties || P.ownedProperties.length === 0) return;
+  if (dayN === _lastRentDay) return;
+  _lastRentDay = dayN;
+  let total = 0;
+  P.ownedProperties.forEach(id => {
+    const h = Sim.houses.find(x => x.id === id);
+    if (h) total += h.rent;
+  });
+  if (total > 0) {
+    P.money += total;
+    showNotice(`🏠 임대 수입 ₦${total.toLocaleString()} 입금 (보유 ${P.ownedProperties.length}채)`);
+    document.getElementById('mv').textContent = P.money.toLocaleString();
   }
 }
 
@@ -8901,7 +9298,7 @@ var mCtrl = document.getElementById('m-controls');
 
 if (isMobile) {
   document.body.classList.add('is-mobile-device');
-  if (mCtrl) mCtrl.style.display = 'block';
+  if (mCtrl) mCtrl.style.display = 'none'; // 로그인 전에는 숨김, 게임 시작 후 표시
 } else {
   document.body.classList.remove('is-mobile-device');
   if (mCtrl) mCtrl.style.display = 'none';
@@ -8910,9 +9307,11 @@ if (isMobile) {
 window.addEventListener('resize', function() {
   var mobileNow = checkIsMobile();
   var ctrl = document.getElementById('m-controls');
+  var lockHidden = document.getElementById('lock-screen')?.style.display === 'none';
   if (mobileNow) {
     document.body.classList.add('is-mobile-device');
-    if (ctrl) ctrl.style.display = 'block';
+    // 게임 시작 후(lock-screen 숨겨진 후)에만 컨트롤 표시
+    if (ctrl) ctrl.style.display = lockHidden ? 'block' : 'none';
   } else {
     document.body.classList.remove('is-mobile-device');
     if (ctrl) ctrl.style.display = 'none';
@@ -8927,10 +9326,19 @@ if (isMobile) {
     try { _origRequestPointerLock.call(this); } catch(e) {}
   };
 
-  // ── 스크롤/핀치줌 방지 ──
+  // ── 스크롤/핀치줌 방지 (스크롤 가능한 패널 제외) ──
+  var scrollableSelectors = [
+    '#admin-panel', '#dashboard', '.db-body', '.db-tabs',
+    '.modal-panel', '#inventory-panel', '#job-modal',
+    '.table-wrapper', '.scroll-card', '.event-logs',
+    '#npc-dialog-modal', '#study-modal', '#disaster-modal',
+    '.admin-tab-content'
+  ];
   document.addEventListener('touchmove', function(e) {
-    if (e.target === document.getElementById('admin-panel') ||
-        e.target.closest && e.target.closest('#admin-panel')) return;
+    if (!e.target.closest) return;
+    for (var i = 0; i < scrollableSelectors.length; i++) {
+      if (e.target.closest(scrollableSelectors[i])) return;
+    }
     e.preventDefault();
   }, { passive: false });
 
@@ -9010,11 +9418,13 @@ if (isMobile) {
         if (camTouchId === null) {
           camTouchId = t.identifier;
           camPrevX   = t.clientX;
+          camPrevY   = t.clientY;
           break;
         }
       }
     }, { passive: true });
 
+    var camPrevY = 0;
     c2.addEventListener('touchmove', function(e) {
       isDragging = false; // 기존 핸들러 차단
       if (camTouchId === null || dlgOpen) return;
@@ -9022,9 +9432,13 @@ if (isMobile) {
         var t = e.changedTouches[i];
         if (t.identifier === camTouchId) {
           var dx = t.clientX - camPrevX;
+          var dy = t.clientY - camPrevY;
           camPrevX = t.clientX;
+          camPrevY = t.clientY;
           cameraYaw -= dx * camSensitivity;
           P.angle = cameraYaw;
+          cameraPitch -= dy * camSensitivity * 0.6;
+          cameraPitch = Math.max(-0.4, Math.min(0.8, cameraPitch));
           break;
         }
       }

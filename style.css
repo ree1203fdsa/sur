@@ -1360,6 +1360,8 @@ input[type="range"]::-webkit-slider-thumb:hover {
   margin-top: 12px;
   text-shadow: 0 0 8px var(--gold-dim);
 }
+.re-actions { margin-top: 10px; }
+.re-owned { border-color: #00e676 !important; box-shadow: 0 0 10px rgba(0,230,118,0.15) !important; }
 
 /* Event Logs list */
 .event-logs {
@@ -2609,18 +2611,19 @@ body.admin-god-active #hud::after {
    📱 모바일 터치 컨트롤
 ═══════════════════════════════════════════ */
 
-/* 모바일 전용 터치 컨트롤 — 데스크톱에서는 숨김 */
+/* 모바일 전용 터치 컨트롤 — 데스크톱/로그인 전에는 숨김 */
 #m-controls {
   display: none !important;
 }
 
-body.is-mobile-device #m-controls {
+/* 게임 시작 후(game-active 클래스)에만 표시 */
+body.is-mobile-device.game-active #m-controls {
   display: block !important;
 }
 
 /* 모바일 화면 최적화 */
 @media (max-width: 1024px) and (pointer: coarse) {
-  body.is-mobile-device #m-controls { display: block !important; }
+  body.is-mobile-device.game-active #m-controls { display: block !important; }
 
   /* 로그인 화면 모바일 최적화 */
   #lock-screen {
@@ -2886,6 +2889,634 @@ body.is-mobile-device #m-controls {
     width: 100vw !important;
     height: 100vh !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════
+   📱 모바일 전용 추가 최적화 (is-mobile-device 클래스)
+═══════════════════════════════════════════════════════ */
+
+/* 로그인 화면 — 키보드 단축키 안내 숨김 (모바일 불필요) */
+body.is-mobile-device .controls {
+  display: none !important;
+}
+
+/* 로그인 화면 — city-stats 간격 줄이기 */
+body.is-mobile-device .city-stats {
+  gap: 18px;
+  padding-top: 16px;
+}
+body.is-mobile-device .cs-val { font-size: 16px; }
+
+/* 로그인 컨테이너 — 너비 꽉 채우기 */
+body.is-mobile-device #login-container {
+  width: 100%;
+  max-width: 380px;
+}
+
+/* 퀘스트 패널 — 모바일 위치 조정: 집무실 버튼 아래로 */
+body.is-mobile-device #quest-panel {
+  top: 90px;
+  right: 8px;
+  width: 175px;
+  padding: 10px 12px;
+}
+body.is-mobile-device .quest-name { font-size: 12px; }
+body.is-mobile-device .quest-desc { font-size: 9px; }
+
+/* 대통령 집무실 토글 버튼 — 모바일 터치 영역 확대 */
+body.is-mobile-device #dashboard-toggle-btn {
+  top: 36px;
+  right: 8px;
+  padding: 8px 14px;
+  font-size: 11px;
+}
+
+/* 가로 모드에서 직업 센터 버튼 — 컨트롤과 겹치지 않게 올리기 */
+@media (pointer: coarse) and (orientation: landscape) {
+  body.is-mobile-device #job-center-btn {
+    bottom: 100px !important;
+  }
+
+  /* 퀘스트 패널 — 가로 모드에서 집무실 버튼 아래로 */
+  body.is-mobile-device #quest-panel {
+    top: 78px;
+    right: 8px;
+    width: 200px;
+  }
+}
+
+/* 세로 모드에서 퀘스트 패널 — 집무실 버튼과 겹치지 않게 */
+@media (pointer: coarse) and (orientation: portrait) {
+  body.is-mobile-device #quest-panel {
+    top: 80px;
+    right: 8px;
+    width: 170px;
+  }
+  body.is-mobile-device #dashboard-toggle-btn {
+    font-size: 10px;
+    padding: 6px 10px;
+  }
+}
+
+/* HUD 스탯 바 — 모바일에서 조금 더 넓게 */
+body.is-mobile-device .sbg {
+  width: 90px;
+}
+
+/* 머니 HUD — 모바일에서 위치 조정 (미니맵과 겹치지 않게) */
+body.is-mobile-device #money-hud {
+  right: 116px;
+  bottom: 18px;
+}
+body.is-mobile-device #money-hud .amount {
+  font-size: 18px;
+}
+
+/* 미니맵 — 컨트롤 버튼과 겹치지 않게 */
+body.is-mobile-device #minimap {
+  bottom: 168px;
+  right: 8px;
+}
+
+/* 음소거 버튼 — 미니맵 위로 */
+body.is-mobile-device #mute-btn {
+  bottom: 278px;
+  right: 8px;
+}
+
+/* 가로 모드에서 미니맵 & 음소거 위치 */
+@media (pointer: coarse) and (orientation: landscape) {
+  body.is-mobile-device #minimap {
+    bottom: 140px;
+    right: 8px;
+  }
+  body.is-mobile-device #mute-btn {
+    bottom: 250px;
+    right: 8px;
+  }
+  body.is-mobile-device #money-hud {
+    right: 116px;
+    bottom: 16px;
+  }
+}
+
+/* 통지 토스트 — 모바일에서 컨트롤 위로 */
+body.is-mobile-device #notice {
+  top: auto !important;
+  bottom: 220px !important;
+}
+
+/* 대시보드 — 모바일 전체화면 최적화 */
+body.is-mobile-device #dashboard {
+  width: 98vw;
+  height: 95vh;
+  border-radius: 10px;
+}
+body.is-mobile-device .db-tabs {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+body.is-mobile-device .db-tabs::-webkit-scrollbar { display: none; }
+body.is-mobile-device .db-tab-btn {
+  padding: 10px 12px;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+body.is-mobile-device .db-grid-4 {
+  grid-template-columns: repeat(2, 1fr);
+}
+body.is-mobile-device .db-grid-3 {
+  grid-template-columns: repeat(2, 1fr);
+}
+body.is-mobile-device .db-body {
+  padding: 14px;
+}
+
+/* 모달 패널 — 모바일 화면에 맞게 */
+body.is-mobile-device .modal-panel {
+  width: 94vw;
+  max-height: 85vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 인벤토리 패널 — 모바일 */
+body.is-mobile-device #inventory-panel {
+  width: 94vw;
+}
+
+/* 지구 HUD 이름 — 모바일에서 작게 */
+body.is-mobile-device #district-hud {
+  padding: 6px 12px;
+}
+body.is-mobile-device #district-hud .dname {
+  font-size: 10px;
+}
+
+/* 시간 HUD — 모바일에서 작게 */
+body.is-mobile-device #time-hud .t {
+  font-size: 20px;
+}
+
+/* 실내 HUD — 모바일 스크롤 허용 */
+body.is-mobile-device #interior-hud {
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 16px;
+  bottom: 180px !important;
+}
+
+/* 조이스틱 버튼 — 더 큰 터치 영역 */
+body.is-mobile-device .m-btn {
+  width: 66px;
+  height: 66px;
+}
+
+/* 스탯 패널 — 모바일 */
+body.is-mobile-device #stats {
+  bottom: 172px;
+  left: 12px;
+  gap: 7px;
+  padding: 8px 10px;
+}
+
+/* ══════════════════════════════════════
+   👥 플레이어 목록 버튼 & 패널
+   ══════════════════════════════════════ */
+#player-list-btn {
+  position: absolute;
+  bottom: 212px;
+  right: 22px;
+  background: rgba(4, 10, 24, 0.75);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: all;
+  transition: all var(--transition);
+  backdrop-filter: var(--blur);
+  gap: 2px;
+}
+#player-list-btn:hover { border-color: var(--primary); box-shadow: 0 0 10px var(--primary-ghost); }
+#online-count-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #00e676;
+  min-width: 12px;
+}
+#player-list-panel {
+  position: fixed;
+  top: 50%;
+  right: 70px;
+  transform: translateY(-50%);
+  z-index: 2800;
+  width: 220px;
+  max-height: 60vh;
+  overflow-y: auto;
+  pointer-events: all;
+  border-radius: var(--radius);
+  padding: 0;
+}
+.pl-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 700;
+}
+.pl-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  font-size: 13px;
+}
+.pl-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00e676;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px #00e676;
+}
+.pl-dot.self { background: var(--primary); box-shadow: 0 0 6px var(--primary); }
+.pl-name { color: var(--text); font-weight: 500; flex: 1; }
+.pl-you { font-size: 10px; color: var(--text-dim); }
+
+/* ══════════════════════════════════════
+   💬 채팅 버튼 & 패널
+   ══════════════════════════════════════ */
+#chat-toggle-btn {
+  position: fixed;
+  bottom: 22px;
+  left: 22px;
+  background: rgba(4, 10, 24, 0.85);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 18px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: all;
+  transition: all var(--transition);
+  backdrop-filter: var(--blur);
+  z-index: 900;
+}
+#chat-toggle-btn:hover { border-color: var(--primary); box-shadow: 0 0 12px var(--primary-ghost); }
+#chat-unread-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: #ff5c5c;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#chat-panel {
+  position: fixed;
+  bottom: 76px;
+  left: 14px;
+  z-index: 2800;
+  width: 320px;
+  pointer-events: all;
+  border-radius: var(--radius);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 700;
+}
+#chat-messages {
+  height: 200px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  scrollbar-width: thin;
+}
+#chat-messages::-webkit-scrollbar { width: 4px; }
+#chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.chat-msg {
+  font-size: 12px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.chat-msg .chat-name { font-weight: 700; margin-right: 4px; }
+.chat-msg.self-msg .chat-name { color: var(--primary); }
+.chat-msg.other-msg .chat-name { color: #a0c4ff; }
+.chat-msg.system-msg { color: var(--text-dim); font-style: italic; font-size: 11px; }
+#chat-emoji-row {
+  display: flex;
+  gap: 4px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.chat-emoji-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 16px;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  flex: 1;
+  transition: all var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chat-emoji-btn:hover { background: rgba(255,255,255,0.08); transform: scale(1.1); }
+#chat-input-row {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  align-items: center;
+}
+#chat-input-row .settings-input { margin: 0; }
+#chat-input-row .settings-confirm-btn { white-space: nowrap; flex-shrink: 0; }
+
+/* ══════════════════════════════════════
+   💬 말풍선
+   ══════════════════════════════════════ */
+#speech-bubbles-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 800;
+}
+.speech-bubble {
+  position: absolute;
+  background: rgba(4, 10, 30, 0.88);
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  max-width: 160px;
+  white-space: normal;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  transition: opacity 0.3s;
+  box-shadow: 0 0 8px var(--primary-ghost);
+}
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--primary);
+}
+
+/* 🎉 이모지 플로팅 애니메이션 */
+.float-emoji {
+  position: absolute;
+  font-size: 22px;
+  pointer-events: none;
+  animation: floatUp 1.8s ease-out forwards;
+  z-index: 900;
+}
+@keyframes floatUp {
+  0%   { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  80%  { opacity: 0.8; transform: translate(-50%, -80px) scale(1.3); }
+  100% { opacity: 0; transform: translate(-50%, -100px) scale(0.8); }
+}
+
+/* 채팅·플레이어 목록 — 모바일 위치 조정 */
+body.is-mobile-device #chat-toggle-btn { bottom: 220px; left: 8px; width: 40px; height: 40px; font-size: 16px; }
+body.is-mobile-device #chat-panel { bottom: 270px; left: 8px; width: calc(100vw - 80px); }
+body.is-mobile-device #player-list-panel { right: 8px; top: 130px; transform: none; }
+body.is-mobile-device #player-list-btn { bottom: 254px; right: 8px; }
+@media (pointer: coarse) and (orientation: landscape) {
+  body.is-mobile-device #chat-toggle-btn { bottom: 190px; }
+  body.is-mobile-device #chat-panel { bottom: 240px; width: 280px; }
+  body.is-mobile-device #player-list-btn { bottom: 224px; }
+}
+
+/* ⚙️ 설정 버튼 */
+#settings-btn {
+  position: absolute;
+  bottom: 170px;
+  right: 22px;
+  background: rgba(4, 10, 24, 0.75);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 16px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: all;
+  transition: all var(--transition);
+  backdrop-filter: var(--blur);
+}
+#settings-btn:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 10px var(--primary-ghost);
+}
+
+/* ⚙️ 설정 패널 */
+#settings-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3000;
+  width: 360px;
+  max-height: 85vh;
+  overflow-y: auto;
+  pointer-events: all;
+  border-radius: var(--radius);
+  padding: 0;
+}
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.settings-header .close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color var(--transition);
+}
+.settings-header .close-btn:hover { color: var(--text); }
+.settings-body {
+  padding: 12px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.settings-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-input {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  padding: 8px 12px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.settings-input:focus { border-color: var(--primary); }
+.settings-lang-btn, .settings-res-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 13px;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.settings-lang-btn:hover, .settings-res-btn:hover,
+.settings-lang-btn.active, .settings-res-btn.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(0,170,255,0.08);
+}
+.settings-confirm-btn {
+  background: var(--primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 20px;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: opacity var(--transition);
+}
+.settings-confirm-btn:hover { opacity: 0.85; }
+.settings-logout-btn {
+  width: 100%;
+  background: rgba(255, 60, 60, 0.12);
+  border: 1px solid rgba(255, 60, 60, 0.4);
+  border-radius: var(--radius-sm);
+  color: #ff5c5c;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.settings-logout-btn:hover {
+  background: rgba(255, 60, 60, 0.22);
+}
+#volume-val {
+  font-size: 12px;
+  color: var(--text-dim);
+  min-width: 34px;
+  text-align: right;
+}
+input[type="range"]#volume-slider {
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]#volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--primary);
+  cursor: pointer;
+}
+
+/* 해상도 섹션은 모바일에서 숨김 */
+body.is-mobile-device .settings-resolution-section { display: none !important; }
+
+/* 게스트 로그인 시 비밀번호 변경 섹션 숨김 */
+body.guest-mode #settings-pw-section { display: none !important; }
+
+/* 설정 버튼 — 모바일 위치 조정 */
+body.is-mobile-device #settings-btn {
+  bottom: 322px;
+  right: 8px;
+}
+@media (pointer: coarse) and (orientation: landscape) {
+  body.is-mobile-device #settings-btn {
+    bottom: 294px;
+    right: 8px;
+  }
+}
+
+/* 설정 패널 — 모바일 크기 조정 */
+body.is-mobile-device #settings-panel {
+  width: 94vw;
+  max-height: 80vh;
 }
 
 /* ══════════════════════════════════════

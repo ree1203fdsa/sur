@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 
@@ -63,6 +63,112 @@
 
     <!-- 🔊 음소거 버튼 -->
     <button id="mute-btn" onclick="toggleMute()" title="음소거">🔊</button>
+
+    <!-- ⚙️ 설정 버튼 -->
+    <button id="settings-btn" onclick="toggleSettings()" title="설정">⚙️</button>
+
+    <!-- 👥 플레이어 목록 버튼 -->
+    <button id="player-list-btn" onclick="togglePlayerList()" title="접속 중인 플레이어">
+      👥<span id="online-count-badge">0</span>
+    </button>
+  </div>
+
+  <!-- 👥 플레이어 목록 패널 -->
+  <div id="player-list-panel" class="glass-panel" style="display:none;">
+    <div class="pl-header">
+      <span>👥 <span class="i18n" data-ko="접속 중인 플레이어" data-en="Online Players">접속 중인 플레이어</span></span>
+      <button class="close-btn" onclick="togglePlayerList()">✕</button>
+    </div>
+    <div id="player-list-body"></div>
+  </div>
+
+  <!-- 💬 채팅 패널 -->
+  <div id="chat-panel" class="glass-panel" style="display:none;">
+    <div class="chat-header">
+      <span>💬 <span class="i18n" data-ko="채팅" data-en="Chat">채팅</span></span>
+      <button class="close-btn" onclick="toggleChat()">✕</button>
+    </div>
+    <div id="chat-messages"></div>
+    <div id="chat-emoji-row">
+      <button class="chat-emoji-btn" onclick="sendEmoji('👋')">👋</button>
+      <button class="chat-emoji-btn" onclick="sendEmoji('😂')">😂</button>
+      <button class="chat-emoji-btn" onclick="sendEmoji('👍')">👍</button>
+      <button class="chat-emoji-btn" onclick="sendEmoji('🎉')">🎉</button>
+      <button class="chat-emoji-btn" onclick="sendEmoji('❤️')">❤️</button>
+      <button class="chat-emoji-btn" onclick="sendEmoji('🔥')">🔥</button>
+    </div>
+    <div id="chat-input-row">
+      <input id="chat-input" class="settings-input" placeholder="메시지 입력... (Enter)" maxlength="80" onkeydown="if(event.key==='Enter')sendChat()">
+      <button class="settings-confirm-btn" onclick="sendChat()">전송</button>
+    </div>
+  </div>
+
+  <!-- 💬 채팅 토글 버튼 -->
+  <button id="chat-toggle-btn" onclick="toggleChat()" title="채팅">
+    💬<span id="chat-unread-badge" style="display:none;">!</span>
+  </button>
+
+  <!-- 말풍선 레이어 (CSS absolute positioning) -->
+  <div id="speech-bubbles-layer"></div>
+
+  <!-- ⚙️ 설정 패널 -->
+  <div id="settings-panel" class="glass-panel" style="display:none;">
+    <div class="settings-header">
+      <span>⚙️ <span class="i18n" data-ko="설정" data-en="Settings">설정</span></span>
+      <button class="close-btn" onclick="toggleSettings()">✕</button>
+    </div>
+    <div class="settings-body">
+
+      <!-- 언어 변경 -->
+      <div class="settings-section">
+        <div class="settings-label">🌐 <span class="i18n" data-ko="언어" data-en="Language">언어</span></div>
+        <div class="settings-row">
+          <button class="settings-lang-btn" id="lang-ko-btn" onclick="changeLanguage('ko')">한국어</button>
+          <button class="settings-lang-btn" id="lang-en-btn" onclick="changeLanguage('en')">English</button>
+        </div>
+      </div>
+
+      <!-- 전체 소리 -->
+      <div class="settings-section">
+        <div class="settings-label">🔊 <span class="i18n" data-ko="전체 소리" data-en="Master Volume">전체 소리</span></div>
+        <div class="settings-row">
+          <input type="range" id="volume-slider" min="0" max="100" value="70" oninput="setMasterVolume(this.value)" style="flex:1;">
+          <span id="volume-val">70%</span>
+        </div>
+      </div>
+
+      <!-- 화면 해상도 (PC 전용) -->
+      <div class="settings-section settings-resolution-section">
+        <div class="settings-label">🖥️ <span class="i18n" data-ko="화면 해상도" data-en="Resolution">화면 해상도</span></div>
+        <div class="settings-row" style="gap:6px;flex-wrap:wrap;">
+          <button class="settings-res-btn" onclick="setResolution(0.5)"><span class="i18n" data-ko="낮음" data-en="Low">낮음</span></button>
+          <button class="settings-res-btn active" onclick="setResolution(1.0)"><span class="i18n" data-ko="보통" data-en="Medium">보통</span></button>
+          <button class="settings-res-btn" onclick="setResolution(1.5)"><span class="i18n" data-ko="높음" data-en="High">높음</span></button>
+          <button class="settings-res-btn" onclick="setResolution(2.0)"><span class="i18n" data-ko="최고" data-en="Ultra">최고</span></button>
+        </div>
+      </div>
+
+      <!-- 비밀번호 변경 -->
+      <div class="settings-section" id="settings-pw-section">
+        <div class="settings-label">🔑 <span class="i18n" data-ko="비밀번호 변경" data-en="Change Password">비밀번호 변경</span></div>
+        <div class="settings-col">
+          <input type="password" id="pw-old" class="settings-input" placeholder="현재 비밀번호">
+          <input type="password" id="pw-new" class="settings-input" placeholder="새 비밀번호">
+          <input type="password" id="pw-confirm" class="settings-input" placeholder="새 비밀번호 확인">
+          <button class="settings-confirm-btn" onclick="changePassword()">
+            <span class="i18n" data-ko="변경" data-en="Change">변경</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 로그아웃 -->
+      <div class="settings-section">
+        <button class="settings-logout-btn" onclick="logoutPlayer()">
+          🚪 <span class="i18n" data-ko="로그아웃" data-en="Logout">로그아웃</span>
+        </button>
+      </div>
+
+    </div>
   </div>
 
   <div id="dialog">
@@ -1209,7 +1315,7 @@
       <button id="m-btn-jump" class="m-btn">🦘<br><span>점프</span></button>
       <button id="m-btn-e" class="m-btn">✋<br><span>상호작용</span></button>
       <button id="m-btn-map" class="m-btn">🗺️<br><span>지도</span></button>
-      <button id="m-btn-dash" class="m-btn">⚡<br><span>주행</span></button>
+      <button id="m-btn-dash" class="m-btn">🏛️<br><span>집무실</span></button>
     </div>
   </div>
 
