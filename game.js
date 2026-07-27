@@ -556,6 +556,9 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     startMultiplayer();
     if (currentUsername === ADMIN_ID) initAdminPanel();
     if (currentUsername === 'hsy') initHsyPanel();
+    // 대통령 집무실 버튼은 ree1203만 표시
+    const _dbBtn = document.getElementById('dashboard-toggle-btn');
+    if (_dbBtn) _dbBtn.style.display = currentUsername === 'ree1203' ? '' : 'none';
     showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
   } catch (err) {
     if (err.message === "PERMISSION_DENIED") {
@@ -651,6 +654,9 @@ document.getElementById('registerBtn').addEventListener('click', async () => {
     saveUser(currentUsername, currentPassword);
   }, 15000);
 
+  // 대통령 집무실 버튼은 ree1203만 표시
+  const _dbBtn2 = document.getElementById('dashboard-toggle-btn');
+  if (_dbBtn2) _dbBtn2.style.display = currentUsername === 'ree1203' ? '' : 'none';
   showNotice(`🏙️ 회원가입 완료! 환영합니다, ${currentUsername}님!`);
 });
 
@@ -684,6 +690,9 @@ window.startGuest = function startGuest() {
   simInterval = setInterval(() => { Sim.tick(); updateDashboardData(); }, 10000);
 
   startMultiplayer();
+  // 게스트는 대통령 집무실 버튼 숨김
+  const _dbBtnG = document.getElementById('dashboard-toggle-btn');
+  if (_dbBtnG) _dbBtnG.style.display = 'none';
   showNotice('🎮 게스트 모드로 온라인 연결되어 시작합니다!');
 }
 
@@ -767,7 +776,7 @@ addEventListener('keydown', e => {
   
   if (e.key === 'Tab') {
     e.preventDefault();
-    toggleDashboard(!isDashboardOpen);
+    if (currentUsername === 'ree1203') toggleDashboard(!isDashboardOpen);
   }
   
   if (e.key === 'r' || e.key === 'R') {
@@ -10288,4 +10297,743 @@ function hsyChatBan() {
   })
   .catch(function() { showNotice('❌ 채팅 금지 실패'); });
 }
+
+
+// ════════════════════════════════════════════════════════
+//   👑 Owner 시스템 — ree1203 최고 관리자 전용
+// ════════════════════════════════════════════════════════
+
+// switchAdminTab에 'owner' 탭 추가
+(function() {
+  var _prev = switchAdminTab;
+  switchAdminTab = function(tab) {
+    document.querySelectorAll('.admin-tab-content').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.admin-tab-btn').forEach(function(el) { el.classList.remove('active'); });
+    var content = document.getElementById('admin-tab-' + tab);
+    if (content) content.classList.add('active');
+    document.querySelectorAll('.admin-tab-btn').forEach(function(btn) {
+      if (btn.textContent.includes('Owner') && tab === 'owner') btn.classList.add('active');
+    });
+    if (tab === 'players') adminRefreshPlayerList();
+    if (tab === 'logs') renderAdminLogs();
+    if (tab === 'owner') ownerOnOpen();
+  };
+})();
+
+function ownerOnOpen() {
+  ownerLoadAdminActivity();
+  ownerLoadStats();
+  ownerLoadAIList();
+  ownerLoadLoginLog();
+  ownerLoadRanks();
+  ownerLoadCurrentVersion();
+  ownerUpdateFPS();
+  ownerLoadZones();
+}
+
+function switchOwnerTab(tab) {
+  document.querySelectorAll('.owner-sub-content').forEach(function(el) { el.classList.remove('active'); });
+  document.querySelectorAll('.owner-sub-btn').forEach(function(btn) { btn.classList.remove('active'); });
+  var el = document.getElementById('owner-tab-' + tab);
+  if (el) el.classList.add('active');
+  var btns = document.querySelectorAll('#owner-subtab-btns .owner-sub-btn');
+  var map = ['perms','server','data','world','system','economy','ai','analytics','security','dev'];
+  var idx = map.indexOf(tab);
+  if (btns[idx]) btns[idx].classList.add('active');
+  if (tab === 'analytics') ownerUpdateFPS();
+}
+
+function ownerLog(msg, type) {
+  adminLog('[Owner] ' + msg, type || 'ok');
+}
+
+// ── 권한 관리 ──
+var ROLE_LABELS = { owner: 'Owner', senior: '수석관리자', admin: '관리자', moderator: '운영자' };
+var ROLE_ORDER = ['moderator','admin','senior','owner'];
+
+function ownerLoadAdminList() {
+  fetch(DB_URL + 'admin_roles.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('owner-admin-list');
+      if (!el) return;
+      if (!data) { el.textContent = '등록된 관리자 없음'; return; }
+      el.innerHTML = Object.entries(data).map(function(e) {
+        return '<div style="display:flex;justify-content:space-between;padding:2px 0;">'
+          + '<span>' + e[0] + '</span>'
+          + '<span style="color:#c084fc;">' + (ROLE_LABELS[e[1].role] || e[1].role) + '</span>'
+          + '</div>';
+      }).join('');
+    }).catch(function() {});
+}
+
+function ownerGrantAdmin() {
+  if (!isAdmin()) return;
+  var user = (document.getElementById('owner-new-admin').value || '').trim();
+  var role = document.getElementById('owner-new-role').value;
+  if (!user) { showNotice('유저명을 입력하세요.'); return; }
+  fetch(DB_URL + 'admin_roles/' + encodeURIComponent(user) + '.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ role: role, grantedBy: 'ree1203', grantedAt: Date.now() })
+  }).then(function() {
+    showNotice('관리자 생성: ' + user + ' (' + (ROLE_LABELS[role]||role) + ')');
+    ownerLog('관리자 생성: ' + user + ' ' + role, 'ok');
+    ownerLoadAdminList();
+    ownerRecordActivity('관리자 생성: ' + user + ' -> ' + role);
+  }).catch(function() { showNotice('권한 부여 실패'); });
+}
+
+function ownerRevokeAdmin() {
+  if (!isAdmin()) return;
+  var user = (document.getElementById('owner-new-admin').value || '').trim();
+  if (!user) { showNotice('유저명을 입력하세요.'); return; }
+  if (!confirm(user + '의 관리자 권한을 삭제하시겠습니까?')) return;
+  fetch(DB_URL + 'admin_roles/' + encodeURIComponent(user) + '.json', { method: 'DELETE' })
+    .then(function() {
+      showNotice(user + ' 관리자 권한 삭제 완료');
+      ownerLog('관리자 삭제: ' + user, 'warn');
+      ownerLoadAdminList();
+      ownerRecordActivity('관리자 삭제: ' + user);
+    }).catch(function() { showNotice('삭제 실패'); });
+}
+
+function ownerPromote() {
+  if (!isAdmin()) return;
+  var user = (document.getElementById('owner-promote-user').value || '').trim();
+  if (!user) { showNotice('유저명을 입력하세요.'); return; }
+  fetch(DB_URL + 'admin_roles/' + encodeURIComponent(user) + '.json')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var cur = d ? d.role : 'moderator';
+      var idx = ROLE_ORDER.indexOf(cur);
+      var next = ROLE_ORDER[Math.min(idx + 1, ROLE_ORDER.length - 2)];
+      return fetch(DB_URL + 'admin_roles/' + encodeURIComponent(user) + '/role.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(next)
+      }).then(function() {
+        showNotice(user + ' 승급: ' + (ROLE_LABELS[next]||next));
+        ownerLog('승급: ' + user + ' -> ' + next, 'ok');
+        ownerLoadAdminList();
+        ownerRecordActivity('승급: ' + user + ' -> ' + next);
+      });
+    }).catch(function() { showNotice('승급 실패'); });
+}
+
+function ownerDemote() {
+  if (!isAdmin()) return;
+  var user = (document.getElementById('owner-promote-user').value || '').trim();
+  if (!user) { showNotice('유저명을 입력하세요.'); return; }
+  fetch(DB_URL + 'admin_roles/' + encodeURIComponent(user) + '.json')
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var cur = d ? d.role : 'admin';
+      var idx = ROLE_ORDER.indexOf(cur);
+      var prev = ROLE_ORDER[Math.max(idx - 1, 0)];
+      return fetch(DB_URL + 'admin_roles/' + encodeURIComponent(user) + '/role.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(prev)
+      }).then(function() {
+        showNotice(user + ' 강등: ' + (ROLE_LABELS[prev]||prev));
+        ownerLog('강등: ' + user + ' -> ' + prev, 'warn');
+        ownerLoadAdminList();
+        ownerRecordActivity('강등: ' + user + ' -> ' + prev);
+      });
+    }).catch(function() { showNotice('강등 실패'); });
+}
+
+function ownerRecordActivity(msg) {
+  fetch(DB_URL + 'admin_activity.json', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ msg: msg, by: 'ree1203', t: Date.now() })
+  }).catch(function() {});
+}
+
+function ownerLoadAdminActivity() {
+  ownerLoadAdminList();
+  fetch(DB_URL + 'admin_activity.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('owner-admin-activity');
+      if (!el) return;
+      if (!data) { el.textContent = '기록 없음'; return; }
+      var entries = Object.values(data).sort(function(a,b){ return b.t - a.t; }).slice(0,30);
+      el.innerHTML = entries.map(function(e) {
+        var d = new Date(e.t);
+        var ts = (d.getMonth()+1) + '/' + d.getDate() + ' ' + d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+        return '<div><span style="color:#555;">[' + ts + '] ' + (e.by||'?') + '</span> ' + (e.msg||'') + '</div>';
+      }).join('');
+    }).catch(function() {});
+}
+
+// ── 서버 제어 ──
+function ownerServerAction(action) {
+  if (!isAdmin()) return;
+  var labels = { start:'시작', stop:'종료', restart:'재시작', emergency:'긴급 종료', lock:'잠금', test:'테스트 서버' };
+  if ((action === 'emergency' || action === 'stop') && !confirm('서버 ' + (labels[action]||action) + '을 실행하시겠습니까?')) return;
+  fetch(DB_URL + 'server_control.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: action, by: 'ree1203', t: Date.now() })
+  }).then(function() {
+    showNotice('서버 ' + (labels[action]||action) + ' 명령 전송 완료');
+    ownerLog('서버: ' + action, action === 'emergency' ? 'err' : 'warn');
+    ownerRecordActivity('서버 제어: ' + action);
+    var statusEl = document.getElementById('owner-server-status');
+    if (statusEl) {
+      if (action === 'start') { statusEl.textContent = '● 온라인'; statusEl.style.color = '#6ee7b7'; }
+      else if (action === 'stop' || action === 'emergency') { statusEl.textContent = '● 오프라인'; statusEl.style.color = '#fca5a5'; }
+      else if (action === 'restart') { statusEl.textContent = '● 재시작 중...'; statusEl.style.color = '#fcd34d'; }
+      else if (action === 'lock') { statusEl.textContent = '● 잠금'; statusEl.style.color = '#fcd34d'; }
+    }
+    if (action === 'lock') adminState.serverLocked = true;
+  }).catch(function() { showNotice('서버 명령 실패'); });
+}
+
+function ownerServerSave() {
+  if (!isAdmin()) return;
+  showNotice('전체 저장 중...');
+  fetch(DB_URL + 'server_control.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'save_all', by: 'ree1203', t: Date.now() })
+  }).then(function() {
+    showNotice('전체 서버 저장 완료');
+    ownerLog('전체 저장', 'ok');
+    ownerRecordActivity('전체 저장');
+  });
+}
+
+function ownerForceAnnounce() {
+  fetch(DB_URL + 'server_control.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: 'force_announce', by: 'ree1203', t: Date.now() })
+  }).then(function() { showNotice('공지 강제 표시 명령 전송'); });
+}
+
+function ownerSendAnnounce() {
+  var txt = (document.getElementById('owner-announce-text').value || '').trim();
+  if (!txt) return;
+  fetch(DB_URL + 'global_notice.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ msg: '[Owner] ' + txt, t: Date.now(), by: 'ree1203' })
+  }).then(function() {
+    showNotice('공지 발송: ' + txt);
+    ownerLog('공지: ' + txt, 'ok');
+    document.getElementById('owner-announce-text').value = '';
+    ownerRecordActivity('공지: ' + txt);
+  });
+}
+
+// ── 데이터 관리 ──
+function ownerBackupAll() {
+  if (!isAdmin()) return;
+  showNotice('전체 백업 중...');
+  fetch(DB_URL + '.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'backup_' + new Date().toISOString().replace(/[:.]/g,'_') + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      var el = document.getElementById('owner-backup-status');
+      if (el) el.textContent = '백업 완료: ' + new Date().toLocaleString();
+      ownerLog('전체 백업 완료', 'ok');
+      ownerRecordActivity('전체 백업');
+    }).catch(function() { showNotice('백업 실패'); });
+}
+
+function ownerRestoreAll() {
+  if (!isAdmin() || !confirm('전체 데이터를 복원합니까? 현재 데이터를 덮어씁니다.')) return;
+  var input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json';
+  input.onchange = function(e) {
+    var file = e.target.files[0]; if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var data = JSON.parse(ev.target.result);
+        fetch(DB_URL + '.json', {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+        }).then(function() {
+          showNotice('전체 데이터 복원 완료');
+          ownerLog('전체 복원', 'ok');
+          ownerRecordActivity('전체 복원');
+        });
+      } catch(err) { showNotice('파일 오류'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function ownerExportData() {
+  fetch(DB_URL + 'users.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'users_export_' + new Date().toISOString().split('T')[0] + '.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      showNotice('사용자 데이터 내보내기 완료');
+      ownerLog('데이터 내보내기', 'ok');
+    });
+}
+
+function ownerImportData() {
+  var input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json';
+  input.onchange = function(e) {
+    var file = e.target.files[0]; if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var data = JSON.parse(ev.target.result);
+        if (!confirm('데이터를 가져옵니까?')) return;
+        fetch(DB_URL + 'users.json', {
+          method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+        }).then(function() { showNotice('데이터 가져오기 완료'); ownerLog('데이터 가져오기', 'ok'); });
+      } catch(err) { showNotice('파일 오류'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function ownerRestorePlayer() {
+  var user = (document.getElementById('owner-data-user').value || '').trim();
+  if (!user) { showNotice('유저명을 입력하세요.'); return; }
+  var input = document.createElement('input');
+  input.type = 'file'; input.accept = '.json';
+  input.onchange = function(e) {
+    var file = e.target.files[0]; if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        var data = JSON.parse(ev.target.result);
+        var userData = data.users && data.users[user];
+        if (!userData) { showNotice('백업에서 ' + user + ' 데이터 없음'); return; }
+        fetch(DB_URL + 'users/' + encodeURIComponent(user) + '.json', {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(userData)
+        }).then(function() {
+          showNotice(user + ' 데이터 복원 완료');
+          ownerLog('플레이어 복원: ' + user, 'ok');
+          ownerRecordActivity('복원: ' + user);
+        });
+      } catch(err) { showNotice('파일 오류'); }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
+function ownerSetLogPeriod() {
+  var val = document.getElementById('owner-log-period').value;
+  fetch(DB_URL + 'server_settings/log_period_days.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(parseInt(val))
+  }).then(function() {
+    showNotice('로그 보관 기간: ' + (val === '0' ? '무제한' : val + '일'));
+    ownerLog('로그 보관: ' + val + '일', 'ok');
+  });
+}
+
+// ── 월드 관리 ──
+function ownerMapAction(action) {
+  if (!isAdmin()) return;
+  var labels = { create:'새 맵 생성', delete:'맵 삭제', reset:'맵 초기화', lock:'월드 잠금' };
+  if ((action === 'delete' || action === 'reset') && !confirm(labels[action] + '을 실행하시겠습니까?')) return;
+  fetch(DB_URL + 'world_control.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ action: action, by: 'ree1203', t: Date.now() })
+  }).then(function() {
+    showNotice(labels[action] + ' 완료');
+    ownerLog('월드: ' + action, 'ok');
+    ownerRecordActivity('월드: ' + action);
+  });
+}
+
+function ownerSetSpawn() {
+  var x = parseFloat(document.getElementById('owner-spawn-x').value);
+  var y = parseFloat(document.getElementById('owner-spawn-y').value);
+  if (isNaN(x) || isNaN(y)) { showNotice('좌표를 입력하세요.'); return; }
+  fetch(DB_URL + 'server_settings/spawn.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ x: x, y: y })
+  }).then(function() {
+    showNotice('스폰 위치: (' + x + ', ' + y + ')');
+    ownerLog('스폰 설정: (' + x + ', ' + y + ')', 'ok');
+    ownerRecordActivity('스폰 변경: (' + x + ',' + y + ')');
+  });
+}
+
+function ownerSetZone(type) {
+  var name = (document.getElementById('owner-zone-name').value || '').trim();
+  if (!name) { showNotice('구역명을 입력하세요.'); return; }
+  var zone = { name: name, type: type, x: Math.round(P.x), y: Math.round(P.y), by: 'ree1203', t: Date.now() };
+  fetch(DB_URL + 'zones/' + encodeURIComponent(name) + '.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(zone)
+  }).then(function() {
+    showNotice((type==='safe'?'안전':'위험') + ' 구역 설정: ' + name);
+    ownerLog('구역: ' + name + ' (' + type + ')', 'ok');
+    ownerLoadZones();
+    ownerRecordActivity('구역 설정: ' + name + ' ' + type);
+  });
+}
+
+function ownerLoadZones() {
+  fetch(DB_URL + 'zones.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('owner-zone-list');
+      if (!el) return;
+      if (!data) { el.textContent = '구역 없음'; return; }
+      el.innerHTML = Object.values(data).map(function(z) {
+        return '<span style="color:' + (z.type==='safe'?'#6ee7b7':'#fca5a5') + ';margin-right:8px;">'
+          + (z.type==='safe'?'🛡️':'☠️') + ' ' + z.name + '</span>';
+      }).join('');
+    }).catch(function() {});
+}
+
+// ── 시스템 관리 ──
+function ownerToggleMaintenance(on) {
+  fetch(DB_URL + 'server_settings/maintenance.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(on)
+  }).then(function() {
+    showNotice(on ? '유지보수 모드 ON' : '유지보수 모드 해제');
+    ownerLog('유지보수: ' + (on?'ON':'OFF'), on?'warn':'ok');
+    ownerRecordActivity('유지보수: ' + (on?'ON':'OFF'));
+  });
+}
+
+function ownerToggleNotices(on) {
+  fetch(DB_URL + 'server_settings/notices_enabled.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(on)
+  }).then(function() { showNotice('공지 시스템: ' + (on?'ON':'OFF')); });
+}
+
+function ownerSetAutosave() {
+  var sec = parseInt(document.getElementById('owner-autosave-interval').value);
+  if (typeof autoSaveInterval !== 'undefined' && autoSaveInterval) clearInterval(autoSaveInterval);
+  autoSaveInterval = setInterval(function() { if (typeof saveUser==='function') saveUser(currentUsername, currentPassword); }, sec * 1000);
+  fetch(DB_URL + 'server_settings/autosave_interval.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(sec)
+  }).then(function() {
+    showNotice('자동 저장 주기: ' + sec + '초');
+    ownerLog('자동 저장: ' + sec + '초', 'ok');
+  });
+}
+
+function ownerSetAutobackup() {
+  var sec = parseInt(document.getElementById('owner-autobackup-interval').value);
+  fetch(DB_URL + 'server_settings/autobackup_interval.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(sec)
+  }).then(function() {
+    showNotice(sec === 0 ? '자동 백업 사용 안 함' : '자동 백업: ' + (sec/3600) + '시간');
+    ownerLog('자동 백업: ' + sec + '초', 'ok');
+  });
+}
+
+function ownerSetVersion() {
+  var v = (document.getElementById('owner-version-input').value || '').trim();
+  if (!v) return;
+  fetch(DB_URL + 'server_settings/version.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(v)
+  }).then(function() {
+    showNotice('게임 버전: ' + v);
+    ownerLog('버전: ' + v, 'ok');
+    ownerLoadCurrentVersion();
+    ownerRecordActivity('버전 변경: ' + v);
+  });
+}
+
+function ownerLoadCurrentVersion() {
+  fetch(DB_URL + 'server_settings/version.json')
+    .then(function(r) { return r.json(); })
+    .then(function(v) {
+      var el = document.getElementById('owner-current-version');
+      if (el) el.textContent = '현재 버전: ' + (v || '미설정');
+    }).catch(function() {});
+}
+
+// ── 경제 관리 ──
+function ownerResetEconomy() {
+  if (!isAdmin() || !confirm('전체 경제를 초기화합니까?') || !confirm('정말로 실행하시겠습니까?')) return;
+  fetch(DB_URL + 'users.json')
+    .then(function(r) { return r.json(); })
+    .then(function(users) {
+      if (!users) return;
+      var patch = {};
+      Object.keys(users).forEach(function(u) {
+        patch[u] = Object.assign({}, users[u], { money: 550000 });
+      });
+      return fetch(DB_URL + 'users.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(patch)
+      });
+    }).then(function() {
+      showNotice('전체 경제 초기화 완료 (초기 자산: 550,000)');
+      ownerLog('전체 경제 초기화', 'warn');
+      ownerRecordActivity('전체 경제 초기화');
+      var el = document.getElementById('owner-economy-status');
+      if (el) el.textContent = '완료: ' + new Date().toLocaleString();
+    }).catch(function() { showNotice('초기화 실패'); });
+}
+
+function ownerAdjustBudget(sign) {
+  var amount = parseInt(document.getElementById('owner-budget-amount').value) || 0;
+  if (!amount) { showNotice('금액을 입력하세요.'); return; }
+  fetch(DB_URL + 'simulation/treasury.json')
+    .then(function(r) { return r.json(); })
+    .then(function(cur) {
+      var newVal = (cur || 0) + sign * amount;
+      return fetch(DB_URL + 'simulation/treasury.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(newVal)
+      });
+    }).then(function() {
+      showNotice((sign>0?'+':'-') + ' 국고: ' + amount.toLocaleString());
+      ownerLog('국고 조정: ' + (sign*amount), 'ok');
+      ownerRecordActivity('국고: ' + (sign*amount));
+    });
+}
+
+function ownerSetCurrency() {
+  var name = (document.getElementById('owner-currency-name').value || '').trim();
+  if (!name) return;
+  fetch(DB_URL + 'server_settings/currency.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(name)
+  }).then(function() { showNotice('화폐 설정: ' + name); ownerLog('화폐: ' + name, 'ok'); });
+}
+
+function ownerSetDefaultTax() {
+  var inc = parseInt(document.getElementById('owner-tax-income').value) || 15;
+  var corp = parseInt(document.getElementById('owner-tax-corp').value) || 10;
+  fetch(DB_URL + 'server_settings/default_tax.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ income: inc, corp: corp })
+  }).then(function() {
+    showNotice('세금 기본값 — 소득세: ' + inc + '%, 법인세: ' + corp + '%');
+    ownerLog('세금: 소득' + inc + '% 법인' + corp + '%', 'ok');
+  });
+}
+
+// ── AI 관리 ──
+function ownerLoadAIList() {
+  fetch(DB_URL + 'ai_nations.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('owner-ai-list');
+      if (!el) return;
+      if (!data) { el.textContent = 'AI 국가 없음'; return; }
+      el.innerHTML = Object.entries(data).map(function(e) {
+        return '<div style="display:flex;justify-content:space-between;">'
+          + '<span>' + e[1].name + '</span>'
+          + '<span style="color:#a78bfa;">' + (e[1].difficulty||'normal') + '</span></div>';
+      }).join('');
+    }).catch(function() {});
+}
+
+function ownerCreateAI() {
+  var name = (document.getElementById('owner-ai-name').value || '').trim();
+  if (!name) { showNotice('AI 국가명을 입력하세요.'); return; }
+  var diff = document.getElementById('owner-ai-diff').value;
+  var agg = document.getElementById('owner-ai-aggression').value;
+  var ai = { name: name, difficulty: diff, aggression: parseInt(agg), gdp: 1000000000, createdAt: Date.now() };
+  fetch(DB_URL + 'ai_nations/' + encodeURIComponent(name) + '.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(ai)
+  }).then(function() {
+    showNotice('AI 국가 생성: ' + name);
+    ownerLog('AI 생성: ' + name, 'ok');
+    ownerLoadAIList();
+    ownerRecordActivity('AI 생성: ' + name);
+  });
+}
+
+function ownerDeleteAI() {
+  var name = (document.getElementById('owner-ai-name').value || '').trim();
+  if (!name || !confirm(name + ' AI 국가를 삭제하시겠습니까?')) return;
+  fetch(DB_URL + 'ai_nations/' + encodeURIComponent(name) + '.json', { method: 'DELETE' })
+    .then(function() {
+      showNotice('AI 국가 삭제: ' + name);
+      ownerLog('AI 삭제: ' + name, 'warn');
+      ownerLoadAIList();
+    });
+}
+
+function ownerResetAI() {
+  if (!confirm('모든 AI 국가를 리셋하시겠습니까?')) return;
+  fetch(DB_URL + 'ai_nations.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data) return;
+      return Promise.all(Object.keys(data).map(function(k) {
+        return fetch(DB_URL + 'ai_nations/' + k + '/gdp.json', {
+          method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(1000000000)
+        });
+      }));
+    }).then(function() {
+      showNotice('모든 AI 국가 리셋 완료');
+      ownerLog('AI 전체 리셋', 'warn');
+      ownerLoadAIList();
+    });
+}
+
+// ── 분석 ──
+function ownerLoadStats() {
+  fetch(DB_URL + 'online_players.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('owner-stats-box');
+      if (!el) return;
+      var now = Date.now();
+      var players = data ? Object.entries(data).filter(function(e) { return now - (e[1].t||0) < 15000; }) : [];
+      el.innerHTML = '온라인: <b style="color:#6ee7b7;">' + players.length + '명</b><br>'
+        + '플레이어: ' + (players.map(function(e){ return e[0]; }).join(', ') || '없음')
+        + '<br>갱신: ' + new Date().toLocaleTimeString();
+    }).catch(function() {});
+}
+
+var ownerLastFrame = 0;
+function ownerUpdateFPS() {
+  var el = document.getElementById('owner-fps');
+  var objEl = document.getElementById('owner-obj-count');
+  var now = performance.now();
+  if (ownerLastFrame > 0 && el) {
+    var fps = Math.round(1000 / Math.max(1, now - ownerLastFrame));
+    el.textContent = fps;
+    el.style.color = fps >= 50 ? '#6ee7b7' : fps >= 30 ? '#fcd34d' : '#fca5a5';
+  }
+  ownerLastFrame = now;
+  if (objEl && typeof renderer !== 'undefined' && renderer && renderer.info.render) {
+    objEl.textContent = (renderer.info.render.triangles||0).toLocaleString() + ' tri';
+  }
+}
+
+function ownerLoadRanks() {
+  fetch(DB_URL + 'users.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('owner-rank-box');
+      if (!el || !data) return;
+      var sorted = Object.entries(data)
+        .map(function(e) { return { name: e[0], money: e[1].money||0 }; })
+        .sort(function(a,b) { return b.money - a.money; }).slice(0,10);
+      el.innerHTML = sorted.map(function(p,i) {
+        return '<div><span style="color:#7c3aed;">' + (i+1) + '위</span> '
+          + p.name + ' <span style="color:#6ee7b7;">₦' + p.money.toLocaleString() + '</span></div>';
+      }).join('');
+    }).catch(function() {});
+}
+
+// ── 보안 ──
+function ownerLoadLoginLog() {
+  fetch(DB_URL + 'login_log.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var el = document.getElementById('owner-login-log');
+      if (!el) return;
+      if (!data) { el.textContent = '로그인 기록 없음'; return; }
+      var entries = Object.values(data).sort(function(a,b){ return b.t-a.t; }).slice(0,20);
+      el.innerHTML = entries.map(function(e) {
+        var d = new Date(e.t);
+        return '<div><span style="color:#555;">' + d.toLocaleString() + '</span> <b>' + (e.user||'?') + '</b></div>';
+      }).join('');
+    }).catch(function() {});
+}
+
+function ownerToggleAutoBan(on) {
+  fetch(DB_URL + 'server_settings/auto_ban.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(on)
+  }).then(function() {
+    showNotice(on ? '자동 차단 ON' : '자동 차단 OFF');
+    ownerLog('자동 차단: ' + (on?'ON':'OFF'), on?'warn':'ok');
+  });
+}
+
+function ownerSetSecurityLevel() {
+  var level = document.getElementById('owner-security-level').value;
+  fetch(DB_URL + 'server_settings/security_level.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(level)
+  }).then(function() {
+    showNotice('보안 등급: ' + level);
+    ownerLog('보안 등급: ' + level, 'ok');
+    ownerRecordActivity('보안 등급: ' + level);
+  });
+}
+
+function ownerCheckIP() {
+  var user = (document.getElementById('owner-ip-user').value || '').trim();
+  var el = document.getElementById('owner-ip-result');
+  if (!user || !el) return;
+  fetch(DB_URL + 'login_log.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data) { el.textContent = '기록 없음'; return; }
+      var logs = Object.values(data).filter(function(e) { return e.user === user; });
+      if (!logs.length) { el.textContent = user + ' 로그인 기록 없음'; return; }
+      var last = logs.sort(function(a,b){return b.t-a.t;})[0];
+      el.textContent = user + ' 마지막 접속: ' + new Date(last.t).toLocaleString();
+    }).catch(function() {});
+}
+
+// ── 개발자 기능 ──
+function ownerToggleDebug(on) {
+  if (typeof renderer !== 'undefined' && renderer) renderer.info.autoReset = !on;
+  showNotice(on ? '디버그 모드 ON' : '디버그 모드 OFF');
+  ownerLog('디버그: ' + (on?'ON':'OFF'), 'ok');
+}
+
+function ownerRunCmd() {
+  var cmd = (document.getElementById('owner-cmd-input').value || '').trim();
+  var result = document.getElementById('owner-cmd-result');
+  if (!cmd || !result) return;
+  try {
+    var ret = (function() { return eval(cmd); })();
+    var out = typeof ret === 'object' ? JSON.stringify(ret, null, 2) : String(ret);
+    result.textContent = '> ' + out;
+    result.style.color = '#6ee7b7';
+    ownerLog('CMD: ' + cmd.slice(0,40), 'ok');
+  } catch(e) {
+    result.textContent = 'ERR: ' + e.message;
+    result.style.color = '#fca5a5';
+  }
+}
+
+function ownerReadDB() {
+  var path = (document.getElementById('owner-db-path').value || '').trim();
+  var el = document.getElementById('owner-db-result');
+  if (!path || !el) return;
+  el.textContent = '불러오는 중...';
+  fetch(DB_URL + path.replace(/^\/+/, '') + '.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      el.textContent = JSON.stringify(data, null, 2);
+      el.style.color = '#93c5fd';
+    }).catch(function(e) {
+      el.textContent = 'ERR: ' + e.message;
+      el.style.color = '#fca5a5';
+    });
+}
+
+function ownerOpenDevConsole() {
+  showNotice('F12 키로 브라우저 개발자 콘솔을 여세요.');
+  console.log('%c[Owner Dev]', 'color:#c084fc;font-size:16px;font-weight:bold;');
+  console.log('scene:', typeof scene !== 'undefined' ? scene : 'N/A');
+  console.log('P:', typeof P !== 'undefined' ? P : 'N/A');
+  console.log('DB_URL:', typeof DB_URL !== 'undefined' ? DB_URL : 'N/A');
+}
+
+function ownerCreateTestItem() {
+  var types = ['에너지 드링크','피자','커피','약','스마트폰'];
+  var item = types[Math.floor(Math.random() * types.length)];
+  if (typeof P !== 'undefined' && P) {
+    if (!Array.isArray(P.inventory)) P.inventory = [];
+    P.inventory.push({ name: item, type: 'consumable', effect: { energy: 20, health: 10 }, qty: 1 });
+    showNotice('테스트 아이템 생성: ' + item);
+    ownerLog('테스트 아이템: ' + item, 'ok');
+  }
+}
+
+// FPS 주기 갱신
+setInterval(function() {
+  var tab = document.getElementById('admin-tab-owner');
+  if (tab && tab.classList.contains('active')) ownerUpdateFPS();
+}, 500);
 

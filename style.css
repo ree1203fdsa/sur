@@ -3583,3 +3583,46 @@ body.is-mobile-device #settings-panel {
   margin-top: 1px;
 }
 
+
+/* ── Owner 패널 스타일 ── */
+.owner-sub-btn {
+  padding: 4px 8px;
+  background: rgba(109,40,217,0.15);
+  border: 1px solid rgba(109,40,217,0.35);
+  border-radius: 6px;
+  color: #a78bfa;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.owner-sub-btn.active {
+  background: rgba(109,40,217,0.45);
+  border-color: #7c3aed;
+  color: #e9d5ff;
+}
+.owner-sub-btn:hover:not(.active) {
+  background: rgba(109,40,217,0.25);
+  color: #c084fc;
+}
+.owner-sub-content {
+  display: none;
+}
+.owner-sub-content.active {
+  display: block;
+}
+.owner-section {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7c3aed;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  margin-top: 10px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid rgba(109,40,217,0.3);
+}
+.owner-section:first-child {
+  margin-top: 0;
+}
