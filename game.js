@@ -272,6 +272,7 @@ function createOtherPlayerModel(username) {
   sprite.position.y = 1.7;
   group.add(sprite);
 
+  group.scale.set(0.18, 0.18, 0.18);
   scene.add(group);
   return group;
 }
@@ -554,6 +555,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
     startMultiplayer();
     if (currentUsername === ADMIN_ID) initAdminPanel();
+    if (currentUsername === 'hsy') initHsyPanel();
     showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
   } catch (err) {
     if (err.message === "PERMISSION_DENIED") {
@@ -1855,12 +1857,28 @@ function render(ts) {
     if (viewMode === 'third') {
       if (playerGroup) playerGroup.visible = true;
       const camDist = 4.2;
-      let camX = P.x - Math.sin(cameraYaw) * Math.cos(cameraPitch) * camDist;
-      let camY = (adminState.flyMode ? 0.8 + adminState.flyY : 0.8) + Math.sin(cameraPitch) * camDist;
-      let camZ = P.y - Math.cos(cameraYaw) * Math.cos(cameraPitch) * camDist;
-      
+      const dirX = -Math.sin(cameraYaw) * Math.cos(cameraPitch);
+      const dirZ = -Math.cos(cameraYaw) * Math.cos(cameraPitch);
+
+      // 카메라 벽 충돌 — 플레이어→이상적 카메라 방향으로 스텝 이동, 벽 감지시 즉시 멈춤
+      let safeDist = camDist;
+      const steps = 20;
+      for (let s = 1; s <= steps; s++) {
+        const d = (s / steps) * camDist;
+        const tx = Math.floor(P.x + dirX * d);
+        const tz = Math.floor(P.y + dirZ * d);
+        if (tx >= 0 && tx < MW && tz >= 0 && tz < MH && MAP[tz][tx] > 0) {
+          safeDist = Math.max(0.3, (s - 1) / steps * camDist);
+          break;
+        }
+      }
+
+      let camX = P.x + dirX * safeDist;
+      let camY = (adminState.flyMode ? 0.8 + adminState.flyY : 0.8) + Math.sin(cameraPitch) * safeDist;
+      let camZ = P.y + dirZ * safeDist;
+
       camY = Math.max(0.18, camY);
-      
+
       camera.position.set(camX, camY, camZ);
       camera.lookAt(new THREE.Vector3(P.x, 0.75 + curH, P.y));
     } else if (viewMode === 'first') {
@@ -10050,4 +10068,224 @@ setInterval(function() {
   // ── ④ 플레이어 목록 "관전" 버튼 클릭 시 관전 모드 자동 활성 ──
   // adminRefreshPlayerList 이미 관전 버튼 포함 — 추가 작업 불필요
 })();
+
+// ════════════════════════════════════════════════════════
+//   🛡️ 부관리자 시스템 — hsy 전용
+// ════════════════════════════════════════════════════════
+
+var hsyPanelOpen = false;
+var hsySelectedTarget = null;
+var hsyLogs = [];
+
+function isHsy() { return currentUsername === 'hsy'; }
+
+function initHsyPanel() {
+  var btn = document.getElementById('hsy-toggle-btn');
+  if (btn) btn.style.display = 'block';
+  hsyAddLog('부관리자 세션 시작: hsy', 'ok');
+}
+
+function toggleHsyPanel() {
+  if (!isHsy()) return;
+  hsyPanelOpen = !hsyPanelOpen;
+  var panel = document.getElementById('hsy-panel');
+  if (panel) panel.style.display = hsyPanelOpen ? 'block' : 'none';
+  if (hsyPanelOpen) renderHsyLogs();
+}
+
+function hsyAddLog(msg, type) {
+  var now = new Date();
+  var ts = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0') + ':' + now.getSeconds().toString().padStart(2,'0');
+  var color = type === 'ok' ? '#6ee7b7' : type === 'warn' ? '#fcd34d' : type === 'err' ? '#fca5a5' : '#a78bfa';
+  hsyLogs.unshift({ ts, msg, color });
+  if (hsyLogs.length > 50) hsyLogs.pop();
+  renderHsyLogs();
+}
+
+function renderHsyLogs() {
+  var box = document.getElementById('hsy-log-box');
+  if (!box) return;
+  if (hsyLogs.length === 0) { box.textContent = '로그 없음'; return; }
+  box.innerHTML = hsyLogs.map(function(l) {
+    return '<span style="color:#555;">[' + l.ts + ']</span> <span style="color:' + l.color + ';">' + l.msg + '</span>';
+  }).join('<br>');
+}
+
+function hsyClearLogs() {
+  hsyLogs = [];
+  renderHsyLogs();
+}
+
+function hsySearchPlayer() {
+  var q = (document.getElementById('hsy-search-input').value || '').trim();
+  if (!q) return;
+  var result = document.getElementById('hsy-search-result');
+
+  // 온라인 플레이어에서 찾기
+  fetch(DB_URL + 'online_players.json')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data[q]) {
+        hsySelectedTarget = q;
+        document.getElementById('hsy-target-name').textContent = q;
+        document.getElementById('hsy-target-name2').textContent = q;
+        result.style.color = '#6ee7b7';
+        result.textContent = '✅ 온라인: ' + q + ' (x:' + Math.round(data[q].x) + ', y:' + Math.round(data[q].y) + ')';
+        hsyAddLog('플레이어 검색: ' + q + ' (온라인)', 'ok');
+      } else {
+        // DB에서 찾기
+        return fetch(DB_URL + 'users/' + encodeURIComponent(q) + '.json')
+          .then(function(r) { return r.json(); })
+          .then(function(u) {
+            if (u && u.money !== undefined) {
+              hsySelectedTarget = q;
+              document.getElementById('hsy-target-name').textContent = q;
+              document.getElementById('hsy-target-name2').textContent = q;
+              result.style.color = '#fcd34d';
+              result.textContent = '🔴 오프라인: ' + q + ' (잔액: ₦' + (u.money||0).toLocaleString() + ')';
+              hsyAddLog('플레이어 검색: ' + q + ' (오프라인)', 'warn');
+            } else {
+              result.style.color = '#fca5a5';
+              result.textContent = '❌ 플레이어를 찾을 수 없습니다.';
+              hsyAddLog('플레이어 검색 실패: ' + q, 'err');
+            }
+          });
+      }
+    })
+    .catch(function() {
+      result.style.color = '#fca5a5';
+      result.textContent = '❌ 검색 오류';
+    });
+}
+
+function hsyToggleGodMode(on) {
+  if (!isHsy()) return;
+  var slider = document.getElementById('hsy-god-slider');
+  if (slider) slider.style.background = on ? '#7c3aed' : '#2d1b4e';
+  // 자신에게만 적용
+  if (on) {
+    adminState.godMode = true;
+    showNotice('👑 [hsy] 무적 모드 활성화');
+    hsyAddLog('무적 모드 ON', 'ok');
+  } else {
+    adminState.godMode = false;
+    showNotice('무적 모드 해제');
+    hsyAddLog('무적 모드 OFF', 'warn');
+  }
+}
+
+function hsyGiveMoney() {
+  if (!isHsy()) return;
+  var target = hsySelectedTarget;
+  var amount = parseInt(document.getElementById('hsy-money-amount').value) || 0;
+  if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (amount <= 0) { showNotice('❌ 금액을 입력하세요.'); return; }
+
+  fetch(DB_URL + 'users/' + encodeURIComponent(target) + '.json')
+    .then(function(r) { return r.json(); })
+    .then(function(u) {
+      if (!u) { showNotice('❌ 대상 없음'); return; }
+      var newMoney = (u.money || 0) + amount;
+      return fetch(DB_URL + 'users/' + encodeURIComponent(target) + '/money.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(newMoney)
+      });
+    })
+    .then(function() {
+      showNotice('💰 ' + target + '에게 ₦' + amount.toLocaleString() + ' 지급 완료');
+      hsyAddLog('돈 지급: ' + target + ' +₦' + amount.toLocaleString(), 'ok');
+    })
+    .catch(function() { showNotice('❌ 지급 실패'); });
+}
+
+function hsyTakeMoney() {
+  if (!isHsy()) return;
+  var target = hsySelectedTarget;
+  var amount = parseInt(document.getElementById('hsy-money-amount').value) || 0;
+  if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (amount <= 0) { showNotice('❌ 금액을 입력하세요.'); return; }
+
+  fetch(DB_URL + 'users/' + encodeURIComponent(target) + '.json')
+    .then(function(r) { return r.json(); })
+    .then(function(u) {
+      if (!u) { showNotice('❌ 대상 없음'); return; }
+      var newMoney = Math.max(0, (u.money || 0) - amount);
+      return fetch(DB_URL + 'users/' + encodeURIComponent(target) + '/money.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(newMoney)
+      });
+    })
+    .then(function() {
+      showNotice('💸 ' + target + '에서 ₦' + amount.toLocaleString() + ' 회수 완료');
+      hsyAddLog('돈 회수: ' + target + ' -₦' + amount.toLocaleString(), 'warn');
+    })
+    .catch(function() { showNotice('❌ 회수 실패'); });
+}
+
+function hsyGiveReward() {
+  if (!isHsy()) return;
+  var target = hsySelectedTarget;
+  if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  var sel = document.getElementById('hsy-reward-type');
+  var amount = sel.value === 'custom'
+    ? parseInt(prompt('지급할 보상 금액(₦):') || '0')
+    : parseInt(sel.value);
+  if (!amount || amount <= 0) return;
+
+  fetch(DB_URL + 'users/' + encodeURIComponent(target) + '.json')
+    .then(function(r) { return r.json(); })
+    .then(function(u) {
+      if (!u) { showNotice('❌ 대상 없음'); return; }
+      var newMoney = (u.money || 0) + amount;
+      return fetch(DB_URL + 'users/' + encodeURIComponent(target) + '/money.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(newMoney)
+      });
+    })
+    .then(function() {
+      showNotice('🎁 ' + target + '에게 보상 ₦' + amount.toLocaleString() + ' 지급!');
+      hsyAddLog('보상 지급: ' + target + ' ₦' + amount.toLocaleString(), 'ok');
+      // 수신자에게 공지 브로드캐스트
+      fetch(DB_URL + 'notices/' + encodeURIComponent(target) + '.json', {
+        method: 'PUT', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ msg: '🎁 부관리자(hsy)가 보상 ₦' + amount.toLocaleString() + '을 지급했습니다!', t: Date.now() })
+      }).catch(function(){});
+    })
+    .catch(function() { showNotice('❌ 보상 지급 실패'); });
+}
+
+function hsySuspendOneDay() {
+  if (!isHsy()) return;
+  var target = hsySelectedTarget;
+  if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (!confirm(target + '을(를) 1일 정지 처리하시겠습니까?')) return;
+
+  var until = Date.now() + 86400000; // 24시간
+  fetch(DB_URL + 'bans/' + encodeURIComponent(target) + '.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ until: until, reason: '부관리자(hsy) 1일 정지', by: 'hsy' })
+  })
+  .then(function() {
+    showNotice('⏸️ ' + target + ' 1일 정지 처리 완료');
+    hsyAddLog('1일 정지: ' + target, 'warn');
+  })
+  .catch(function() { showNotice('❌ 정지 처리 실패'); });
+}
+
+function hsyChatBan() {
+  if (!isHsy()) return;
+  var target = hsySelectedTarget;
+  if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (!confirm(target + '의 채팅을 금지하시겠습니까?')) return;
+
+  fetch(DB_URL + 'chatbans/' + encodeURIComponent(target) + '.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ banned: true, by: 'hsy', t: Date.now() })
+  })
+  .then(function() {
+    showNotice('🔇 ' + target + ' 채팅 금지 완료');
+    hsyAddLog('채팅 금지: ' + target, 'warn');
+  })
+  .catch(function() { showNotice('❌ 채팅 금지 실패'); });
+}
 
