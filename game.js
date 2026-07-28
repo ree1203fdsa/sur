@@ -559,6 +559,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     if (currentUsername === 'hsy') initHsyPanel();
     if (currentUsername === 'ree1203') initWeaponSystem();
     initCompanyPanel();
+    initAllFeatures();
     // 대통령 집무실 버튼은 ree1203만 표시
     const _dbBtn = document.getElementById('dashboard-toggle-btn');
     if (_dbBtn) _dbBtn.style.display = currentUsername === 'ree1203' ? '' : 'none';
@@ -4438,8 +4439,12 @@ async function fetchChatMessages() {
       if (currentUsername === 'ree1203') {
         delBtn = `<button onclick="adminDeleteChatMsg('${key}',this.closest('.chat-msg'))" style="margin-left:6px;background:none;border:none;color:#ff4560;cursor:pointer;font-size:11px;opacity:0.7;padding:0 2px;" title="메시지 삭제">✕</button>`;
       }
-      div.innerHTML = `<span class="chat-name">${_escapeHtml(msg.u)}</span><span class="chat-text">${_escapeHtml(msg.m)}</span>${delBtn}`;
+      const dmLinkHtml = (msg.u !== currentUsername)
+        ? `<button onclick="openDmWith('${msg.u}')" style="background:none;border:none;color:#475569;font-size:10px;cursor:pointer;margin-left:4px;" title="귓속말">💬</button>`
+        : '';
+      div.innerHTML = `<span class="chat-name">${_escapeHtml(msg.u)}</span>${dmLinkHtml}<span class="chat-text">${_escapeHtml(msg.m)}</span>${delBtn}`;
       container.appendChild(div);
+      if (typeof addReactionUI === 'function') addReactionUI(div, key);
       // 최대 80개 유지
       while (container.children.length > 80) container.removeChild(container.firstChild);
     });
@@ -11128,6 +11133,18 @@ function ownerSendAnnounce() {
   });
 }
 
+function ownerStartEvent() {
+  const title  = (document.getElementById('owner-event-title')?.value  || '').trim();
+  const desc   = (document.getElementById('owner-event-desc')?.value   || '').trim();
+  const reward = parseInt(document.getElementById('owner-event-reward')?.value) || 0;
+  const dur    = parseInt(document.getElementById('owner-event-duration')?.value) || 300;
+  if (!title) { showNotice('⚠️ 이벤트 제목을 입력하세요.'); return; }
+  if (typeof startEvent === 'function') startEvent(title, desc, reward, dur, 'ree1203');
+  document.getElementById('owner-event-title').value  = '';
+  document.getElementById('owner-event-desc').value   = '';
+  document.getElementById('owner-event-reward').value = '';
+}
+
 // ── 데이터 관리 ──
 function ownerBackupAll() {
   if (!isAdmin()) return;
@@ -12469,4 +12486,472 @@ async function loadCoNotices() {
 window.initCompanyPanel = initCompanyPanel;
 
 })();
+
+
+// ═══════════════════════════════════════════════════
+// 추가 기능 묶음: 레벨/XP · 업적 · 랭킹 · 귓속말 · 이모지반응 · 이벤트
+// ═══════════════════════════════════════════════════
+
+// ─── 레벨 시스템 ───
+const LEVEL_THRESHOLDS = [0,100,250,500,1000,2000,4000,7000,12000,20000,35000];
+const LEVEL_TITLES = ['시민','주민','거주자','활동가','명사','유지','원로','전설','영웅','전설의 영웅','나라의 기둥'];
+let myLevel = 1, myXP = 0, myXPGoal = 100;
+
+function getLevelInfo(xp) {
+  let lv = 1;
+  for (let i = 1; i < LEVEL_THRESHOLDS.length; i++) {
+    if (xp >= LEVEL_THRESHOLDS[i]) lv = i + 1; else break;
+  }
+  lv = Math.min(lv, LEVEL_THRESHOLDS.length);
+  const cur = LEVEL_THRESHOLDS[lv - 1];
+  const next = LEVEL_THRESHOLDS[lv] || LEVEL_THRESHOLDS[lv - 1] + 99999;
+  return { lv, title: LEVEL_TITLES[lv - 1] || LEVEL_TITLES[LEVEL_TITLES.length - 1], cur, next, pct: Math.min(100, ((xp - cur) / (next - cur)) * 100) };
+}
+
+async function addXP(amount, reason) {
+  if (!currentUsername) return;
+  try {
+    const res = await fetch(`${DB_URL}users/${currentUsername}/xp.json`);
+    const cur = (res.ok ? await res.json() : 0) || 0;
+    const newXP = cur + amount;
+    await fetch(`${DB_URL}users/${currentUsername}/xp.json`, { method: 'PUT', body: JSON.stringify(newXP) });
+    const before = getLevelInfo(cur);
+    const after  = getLevelInfo(newXP);
+    myXP = newXP;
+    updateLevelHUD(after);
+    if (after.lv > before.lv) onLevelUp(after);
+    checkAchievements();
+  } catch(e) {}
+}
+
+function updateLevelHUD(info) {
+  const hud = document.getElementById('level-hud');
+  if (hud) hud.style.display = 'flex';
+  const badge = document.getElementById('level-badge');
+  const bar   = document.getElementById('level-xp-bar');
+  const title = document.getElementById('level-title-text');
+  if (badge) badge.textContent = 'Lv.' + info.lv;
+  if (bar)   bar.style.width   = info.pct + '%';
+  if (title) title.textContent = info.title;
+  myLevel = info.lv;
+}
+
+function onLevelUp(info) {
+  showNotice(`🎉 레벨 업! Lv.${info.lv} ${info.title} 달성!`);
+  fetch(`${DB_URL}users/${currentUsername}/level.json`, { method:'PUT', body: JSON.stringify(info.lv) });
+}
+
+async function loadMyXP() {
+  if (!currentUsername) return;
+  try {
+    const res = await fetch(`${DB_URL}users/${currentUsername}/xp.json`);
+    const xp = (res.ok ? await res.json() : 0) || 0;
+    myXP = xp;
+    updateLevelHUD(getLevelInfo(xp));
+    const rankBtn = document.getElementById('ranking-btn');
+    if (rankBtn) rankBtn.style.display = '';
+    const dmBtn = document.getElementById('dm-notify-btn');
+    if (dmBtn) dmBtn.style.display = '';
+  } catch(e) {}
+}
+
+// 로그인 XP + 분 단위 XP
+function startXPTicker() {
+  addXP(50, 'login');
+  setInterval(() => { addXP(1, 'time'); }, 60000);
+}
+
+// ─── 업적 시스템 ───
+const FEAT_ACHIEVEMENTS = [
+  { id:'first_login',    icon:'🌟', name:'첫 발걸음',   desc:'처음 게임에 접속했습니다.', check: ()=>true },
+  { id:'chat10',         icon:'💬', name:'수다쟁이',    desc:'채팅 메시지 10개 이상 전송', check: async ()=> await getDBVal(`users/${currentUsername}/chatCount`) >= 10 },
+  { id:'millionaire',    icon:'💰', name:'백만장자',    desc:'재산 ₩1,000,000 이상 보유',  check: async ()=> (P.money||0) >= 1000000 },
+  { id:'level5',         icon:'⭐', name:'나라의 기둥', desc:'레벨 5 이상 달성',           check: ()=> myLevel >= 5 },
+  { id:'level10',        icon:'🏆', name:'전설의 시작', desc:'레벨 10 이상 달성',          check: ()=> myLevel >= 10 },
+];
+
+async function getDBVal(path) {
+  try { const r = await fetch(`${DB_URL}${path}.json`); return r.ok ? await r.json() : null; } catch(e){ return null; }
+}
+
+async function checkAchievements() {
+  if (!currentUsername) return;
+  const done = await getDBVal(`users/${currentUsername}/achievements`) || {};
+  for (const ach of FEAT_ACHIEVEMENTS) {
+    if (done[ach.id]) continue;
+    let pass = false;
+    try { pass = await ach.check(); } catch(e){}
+    if (pass) {
+      done[ach.id] = Date.now();
+      await fetch(`${DB_URL}users/${currentUsername}/achievements.json`, { method:'PUT', body:JSON.stringify(done) });
+      showAchievementToast(ach);
+      addXP(200, 'achievement');
+    }
+  }
+}
+
+function showAchievementToast(ach) {
+  const el = document.getElementById('achievement-toast');
+  const t  = document.getElementById('achievement-toast-text');
+  const d  = document.getElementById('achievement-toast-desc');
+  if (!el) return;
+  if (t) t.textContent = ach.icon + ' ' + ach.name;
+  if (d) d.textContent = ach.desc;
+  el.classList.remove('hide');
+  el.classList.add('show');
+  el.style.display = 'block';
+  setTimeout(() => {
+    el.classList.remove('show');
+    el.classList.add('hide');
+    setTimeout(() => { el.style.display='none'; el.classList.remove('hide'); }, 300);
+  }, 3500);
+}
+
+// ─── 랭킹 보드 ───
+let rankPanelOpen = false;
+let currentRankTab = 'money';
+
+function toggleRankingPanel() {
+  rankPanelOpen = !rankPanelOpen;
+  const el = document.getElementById('ranking-panel');
+  if (!el) return;
+  el.style.display = rankPanelOpen ? 'block' : 'none';
+  if (rankPanelOpen) loadRanking(currentRankTab);
+}
+window.toggleRankingPanel = toggleRankingPanel;
+
+function switchRankTab(tab) {
+  currentRankTab = tab;
+  document.querySelectorAll('.rank-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  loadRanking(tab);
+}
+window.switchRankTab = switchRankTab;
+
+async function loadRanking(tab) {
+  const el = document.getElementById('ranking-list');
+  if (!el) return;
+  el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px;">불러오는 중...</div>';
+  try {
+    const res = await fetch(`${DB_URL}users.json?shallow=true`);
+    const keys = res.ok ? await res.json() : {};
+    if (!keys) { el.innerHTML = '<div style="color:#475569;text-align:center;padding:20px;">데이터 없음</div>'; return; }
+    const userNames = Object.keys(keys);
+    const userData = await Promise.all(userNames.map(async u => {
+      const r = await fetch(`${DB_URL}users/${u}.json`);
+      const d = r.ok ? await r.json() : {};
+      return { name: u, money: d?.money || 0, xp: d?.xp || 0, level: getLevelInfo(d?.xp || 0).lv, title: getLevelInfo(d?.xp || 0).title };
+    }));
+    const sorted = userData.sort((a,b) => tab === 'money' ? b.money - a.money : b.xp - a.xp).slice(0, 15);
+    const medals = ['gold','silver','bronze'];
+    el.innerHTML = sorted.map((u, i) => {
+      const rankCls = medals[i] || '';
+      const isMe = u.name === currentUsername;
+      return `
+        <div class="rank-row" style="${isMe ? 'background:rgba(99,102,241,0.1);border-radius:8px;' : ''}">
+          <div class="rank-num ${rankCls}">${i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1}</div>
+          <div style="flex:1">
+            <div style="font-weight:700;color:${isMe?'#818cf8':'#cce4ff'};">${_escapeHtml(u.name)}${isMe?' (나)':''}</div>
+            <div style="font-size:10px;color:#475569;">Lv.${u.level} ${u.title}</div>
+          </div>
+          <div style="font-weight:700;color:#facc15;font-size:13px;">${tab==='money'?'₩'+u.money.toLocaleString():'⭐'+u.xp.toLocaleString()+'XP'}</div>
+        </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div style="color:#ef4444;text-align:center;padding:20px;">오류 발생</div>'; }
+}
+
+// ─── 귓속말(DM) ───
+let dmTarget = null;
+let dmPollInterval = null;
+let dmLastTs = 0;
+let dmUnread = 0;
+
+function getDMKey(a, b) { return [a, b].sort().join('__'); }
+
+function openDmWith(username) {
+  if (!currentUsername || username === currentUsername) return;
+  dmTarget = username;
+  dmLastTs = 0;
+  dmUnread = 0;
+  updateDMNotifyBtn();
+  const panel = document.getElementById('dm-panel');
+  const nameEl = document.getElementById('dm-target-name');
+  const msgs   = document.getElementById('dm-messages');
+  if (nameEl) nameEl.textContent = username;
+  if (msgs)   msgs.innerHTML = '';
+  if (panel)  panel.style.display = 'block';
+  fetchDM();
+  if (dmPollInterval) clearInterval(dmPollInterval);
+  dmPollInterval = setInterval(fetchDM, 3000);
+}
+window.openDmWith = openDmWith;
+
+function closeDmPanel() {
+  const panel = document.getElementById('dm-panel');
+  if (panel) panel.style.display = 'none';
+  if (dmPollInterval) { clearInterval(dmPollInterval); dmPollInterval = null; }
+}
+window.closeDmPanel = closeDmPanel;
+
+async function sendDM() {
+  if (!currentUsername || !dmTarget) return;
+  const input = document.getElementById('dm-input');
+  if (!input) return;
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  const key = getDMKey(currentUsername, dmTarget);
+  await fetch(`${DB_URL}dm/${key}.json`, {
+    method: 'POST',
+    body: JSON.stringify({ from: currentUsername, to: dmTarget, msg, ts: Date.now() })
+  });
+  fetchDM();
+}
+window.sendDM = sendDM;
+
+async function fetchDM() {
+  if (!currentUsername || !dmTarget) return;
+  const key = getDMKey(currentUsername, dmTarget);
+  const url = dmLastTs > 0
+    ? `${DB_URL}dm/${key}.json?orderBy="ts"&startAt=${dmLastTs+1}&limitToLast=20`
+    : `${DB_URL}dm/${key}.json?orderBy="ts"&limitToLast=30`;
+  try {
+    const res = await fetch(url);
+    const data = res.ok ? await res.json() : null;
+    if (!data) return;
+    const msgs = Object.values(data).sort((a,b) => a.ts - b.ts);
+    if (!msgs.length) return;
+    const container = document.getElementById('dm-messages');
+    if (!container) return;
+    msgs.forEach(m => {
+      const isMine = m.from === currentUsername;
+      const el = document.createElement('div');
+      el.style.display = 'flex';
+      el.style.justifyContent = isMine ? 'flex-end' : 'flex-start';
+      el.innerHTML = `<div class="dm-bubble ${isMine?'mine':'theirs'}">${_escapeHtml(m.msg)}</div>`;
+      container.appendChild(el);
+      dmLastTs = Math.max(dmLastTs, m.ts);
+    });
+    container.scrollTop = container.scrollHeight;
+  } catch(e) {}
+}
+
+// 수신 DM 감지 (30초 주기)
+async function pollIncomingDM() {
+  if (!currentUsername) return;
+  try {
+    const res = await fetch(`${DB_URL}dm.json?shallow=true`);
+    const keys = res.ok ? await res.json() : {};
+    if (!keys) return;
+    let newCount = 0;
+    for (const key of Object.keys(keys)) {
+      if (!key.includes(currentUsername)) continue;
+      const other = key.split('__').find(n => n !== currentUsername);
+      if (other === dmTarget) continue;
+      const r2 = await fetch(`${DB_URL}dm/${key}.json?orderBy="ts"&limitToLast=1`);
+      const d = r2.ok ? await r2.json() : null;
+      if (!d) continue;
+      const last = Object.values(d)[0];
+      if (last && last.to === currentUsername && (Date.now() - last.ts) < 60000) newCount++;
+    }
+    dmUnread += newCount;
+    updateDMNotifyBtn();
+  } catch(e) {}
+}
+
+function openDmNotify() {
+  dmUnread = 0;
+  updateDMNotifyBtn();
+  const panel = document.getElementById('dm-panel');
+  if (panel && panel.style.display === 'none') {
+    panel.style.display = 'block';
+    const nameEl = document.getElementById('dm-target-name');
+    if (nameEl) nameEl.textContent = '받은 메시지 확인';
+  }
+}
+window.openDmNotify = openDmNotify;
+
+function updateDMNotifyBtn() {
+  const btn = document.getElementById('dm-notify-btn');
+  const cnt = document.getElementById('dm-notify-count');
+  if (!btn || !cnt) return;
+  cnt.textContent = dmUnread;
+  btn.style.display = dmUnread > 0 ? '' : 'none';
+}
+
+// ─── 이모지 반응 ───
+const REACT_EMOJIS = ['👍','❤️','😂','😮','😢','🔥'];
+
+function addReactionUI(msgEl, chatKey) {
+  if (!msgEl || !chatKey || !currentUsername) return;
+  // 반응 선택 버튼
+  const picker = document.createElement('div');
+  picker.className = 'react-picker';
+  picker.innerHTML = REACT_EMOJIS.map(e =>
+    `<span style="font-size:16px;cursor:pointer;padding:2px 3px;" onclick="reactToMsg('${chatKey}','${e}',this)">${e}</span>`
+  ).join('');
+  // 반응 표시 영역
+  const reactArea = document.createElement('div');
+  reactArea.className = 'chat-reactions';
+  reactArea.id = 'react-' + chatKey;
+  msgEl.style.position = 'relative';
+  const triggerBtn = document.createElement('span');
+  triggerBtn.textContent = '😊';
+  triggerBtn.style.cssText = 'font-size:11px;cursor:pointer;opacity:0.4;margin-left:4px;';
+  triggerBtn.onclick = (e) => { e.stopPropagation(); picker.style.display = picker.style.display==='flex'?'none':'flex'; };
+  msgEl.appendChild(triggerBtn);
+  msgEl.appendChild(picker);
+  msgEl.appendChild(reactArea);
+  loadReactions(chatKey, reactArea);
+}
+
+async function reactToMsg(chatKey, emoji, el) {
+  if (!currentUsername) return;
+  el.closest('.react-picker').style.display = 'none';
+  try {
+    const path = `chat_reactions/${chatKey}/${emoji}/${currentUsername}`;
+    const r = await fetch(`${DB_URL}${path}.json`);
+    const existing = r.ok ? await r.json() : null;
+    if (existing) {
+      await fetch(`${DB_URL}${path}.json`, { method:'DELETE' });
+    } else {
+      await fetch(`${DB_URL}${path}.json`, { method:'PUT', body:'true' });
+    }
+    const area = document.getElementById('react-' + chatKey);
+    if (area) loadReactions(chatKey, area);
+  } catch(e) {}
+}
+window.reactToMsg = reactToMsg;
+
+async function loadReactions(chatKey, area) {
+  if (!area) return;
+  try {
+    const res = await fetch(`${DB_URL}chat_reactions/${chatKey}.json`);
+    const data = res.ok ? await res.json() : null;
+    if (!data) { area.innerHTML = ''; return; }
+    area.innerHTML = Object.entries(data).map(([emoji, users]) => {
+      const count = Object.keys(users).length;
+      const iReacted = users[currentUsername] ? 'reacted' : '';
+      return `<span class="react-btn ${iReacted}" onclick="reactToMsg('${chatKey}','${emoji}',this)">${emoji} ${count}</span>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ─── 이벤트 시스템 ───
+let eventPollInterval = null;
+let currentEventKey = null;
+
+async function startEvent(title, desc, rewardAmount, durationSec, host) {
+  if (!currentUsername) return;
+  const endsAt = Date.now() + durationSec * 1000;
+  const eventData = { title, desc, reward: rewardAmount, host, endsAt, ts: Date.now(), participants: {} };
+  await fetch(`${DB_URL}events/active.json`, { method:'PUT', body: JSON.stringify(eventData) });
+  showNotice(`🎉 이벤트 "${title}" 시작!`);
+  addXP(100, 'event_host');
+}
+
+function hsyStartEvent() {
+  const title   = (document.getElementById('hsy-event-title')?.value || '').trim();
+  const desc    = (document.getElementById('hsy-event-desc')?.value  || '').trim();
+  const reward  = parseInt(document.getElementById('hsy-event-reward')?.value) || 0;
+  const dur     = parseInt(document.getElementById('hsy-event-duration')?.value) || 300;
+  if (!title) { showNotice('⚠️ 이벤트 제목을 입력하세요.'); return; }
+  startEvent(title, desc, reward, dur, currentUsername);
+  document.getElementById('hsy-event-title').value = '';
+  document.getElementById('hsy-event-desc').value  = '';
+  document.getElementById('hsy-event-reward').value = '';
+}
+window.hsyStartEvent = hsyStartEvent;
+
+async function pollEvents() {
+  try {
+    const res = await fetch(`${DB_URL}events/active.json`);
+    const ev  = res.ok ? await res.json() : null;
+    if (!ev || !ev.endsAt) { closeEventPopup(); return; }
+    if (Date.now() > ev.endsAt) {
+      await fetch(`${DB_URL}events/active.json`, { method:'DELETE' });
+      closeEventPopup();
+      return;
+    }
+    const alreadyJoined = ev.participants && ev.participants[currentUsername];
+    showEventPopup(ev, alreadyJoined);
+  } catch(e) {}
+}
+
+function showEventPopup(ev, joined) {
+  const popup = document.getElementById('event-popup');
+  if (!popup) return;
+  popup.style.display = 'block';
+  const remaining = Math.max(0, Math.floor((ev.endsAt - Date.now()) / 1000));
+  const mm = Math.floor(remaining/60).toString().padStart(2,'0');
+  const ss = (remaining % 60).toString().padStart(2,'0');
+  const titleEl  = document.getElementById('event-popup-title');
+  const descEl   = document.getElementById('event-popup-desc');
+  const rewardEl = document.getElementById('event-popup-reward');
+  const hostEl   = document.getElementById('event-popup-host');
+  const timerEl  = document.getElementById('event-popup-timer');
+  const joinBtn  = document.getElementById('event-join-btn');
+  if (titleEl)  titleEl.textContent  = ev.title || '이벤트';
+  if (descEl)   descEl.textContent   = ev.desc  || '';
+  if (rewardEl) rewardEl.textContent = '₩' + (ev.reward||0).toLocaleString() + ' 보상';
+  if (hostEl)   hostEl.textContent   = ev.host  || '?';
+  if (timerEl)  timerEl.textContent  = `${mm}:${ss}`;
+  if (joinBtn) {
+    joinBtn.textContent = joined ? '✅ 참가 완료' : '참가하기';
+    joinBtn.disabled    = !!joined;
+    joinBtn.style.opacity = joined ? '0.5' : '1';
+  }
+}
+
+function closeEventPopup() {
+  const popup = document.getElementById('event-popup');
+  if (popup) popup.style.display = 'none';
+}
+window.closeEventPopup = closeEventPopup;
+
+async function joinEvent() {
+  if (!currentUsername) return;
+  try {
+    const res = await fetch(`${DB_URL}events/active.json`);
+    const ev  = res.ok ? await res.json() : null;
+    if (!ev || !ev.endsAt || Date.now() > ev.endsAt) { showNotice('⚠️ 이벤트가 종료됐습니다.'); closeEventPopup(); return; }
+    if (ev.participants && ev.participants[currentUsername]) { showNotice('이미 참가했습니다.'); return; }
+    // 보상 지급
+    const uRes = await fetch(`${DB_URL}users/${currentUsername}/money.json`);
+    const curMoney = (uRes.ok ? await uRes.json() : 0) || 0;
+    await fetch(`${DB_URL}users/${currentUsername}/money.json`, { method:'PUT', body: JSON.stringify(curMoney + (ev.reward||0)) });
+    await fetch(`${DB_URL}events/active/participants/${currentUsername}.json`, { method:'PUT', body:'true' });
+    if (typeof P !== 'undefined') P.money = curMoney + (ev.reward||0);
+    addXP(50, 'event_join');
+    showNotice(`🎉 이벤트 참가! ₩${(ev.reward||0).toLocaleString()} 지급됐습니다!`);
+    pollEvents();
+  } catch(e) {}
+}
+window.joinEvent = joinEvent;
+
+// ─── 채팅 메시지당 XP + 카운트 ───
+const _origSendChat = window.sendChat;
+window.sendChat = function() {
+  if (typeof _origSendChat === 'function') _origSendChat.apply(this, arguments);
+  // XP 지급
+  addXP(2, 'chat');
+  // 채팅 카운트 증가
+  fetch(`${DB_URL}users/${currentUsername}/chatCount.json`).then(r => r.json()).then(v => {
+    fetch(`${DB_URL}users/${currentUsername}/chatCount.json`, { method:'PUT', body: JSON.stringify((v||0)+1) });
+    checkAchievements();
+  }).catch(()=>{});
+};
+
+// ─── 초기화 ───
+function initAllFeatures() {
+  loadMyXP();
+  startXPTicker();
+  checkAchievements();
+  // 이벤트 폴링 (30초)
+  if (eventPollInterval) clearInterval(eventPollInterval);
+  eventPollInterval = setInterval(pollEvents, 30000);
+  pollEvents();
+  // DM 수신 감지 (30초)
+  setInterval(pollIncomingDM, 30000);
+}
+window.initAllFeatures = initAllFeatures;
 

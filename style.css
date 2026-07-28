@@ -3748,3 +3748,35 @@ body.is-mobile-device #settings-panel {
   border-radius: 0 10px 10px 0;
   padding: 10px 12px;
 }
+
+/* ── 랭킹 탭 ── */
+.rank-tab { transition: color .15s, border-color .15s; }
+.rank-tab.active { color:#facc15 !important; border-bottom-color:#facc15 !important; }
+.rank-row { display:flex; align-items:center; gap:10px; padding:8px 6px; border-bottom:1px solid #1e3a5f; }
+.rank-row:last-child { border-bottom:none; }
+.rank-num { width:22px; font-weight:800; color:#475569; font-size:13px; text-align:center; }
+.rank-num.gold { color:#facc15; }
+.rank-num.silver { color:#94a3b8; }
+.rank-num.bronze { color:#b45309; }
+
+/* ── 레벨 HUD ── */
+#level-hud { pointer-events:none; }
+
+/* ── DM 말풍선 ── */
+.dm-bubble { padding:6px 10px; border-radius:10px; font-size:12px; max-width:80%; word-break:break-word; }
+.dm-bubble.mine { align-self:flex-end; background:#1d4ed8; color:#dbeafe; border-bottom-right-radius:3px; }
+.dm-bubble.theirs { align-self:flex-start; background:#1e3a5f; color:#cce4ff; border-bottom-left-radius:3px; }
+
+/* ── 업적 토스트 애니메이션 ── */
+@keyframes toastIn { from{opacity:0;transform:translateX(40px)} to{opacity:1;transform:translateX(0)} }
+@keyframes toastOut { from{opacity:1;transform:translateX(0)} to{opacity:0;transform:translateX(40px)} }
+#achievement-toast.show { display:block !important; animation:toastIn .3s ease; }
+#achievement-toast.hide { animation:toastOut .3s ease forwards; }
+
+/* ── 이모지 반응 ── */
+.chat-reactions { display:flex; gap:3px; margin-top:3px; flex-wrap:wrap; }
+.react-btn { background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:1px 6px; font-size:11px; cursor:pointer; transition:background .15s; }
+.react-btn:hover { background:rgba(255,255,255,0.14); }
+.react-btn.reacted { background:rgba(99,102,241,0.3); border-color:#6366f1; }
+.react-picker { display:none; position:absolute; background:#0d1f36; border:1px solid #1e3a5f; border-radius:8px; padding:4px; gap:4px; z-index:999; }
+.chat-msg:hover .react-picker { display:flex; }
