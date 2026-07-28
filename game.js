@@ -559,6 +559,9 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     // 대통령 집무실 버튼은 ree1203만 표시
     const _dbBtn = document.getElementById('dashboard-toggle-btn');
     if (_dbBtn) _dbBtn.style.display = currentUsername === 'ree1203' ? '' : 'none';
+    // 채팅 전체 삭제 버튼은 ree1203만 표시
+    const _chatClearBtn = document.getElementById('chat-clear-all-btn');
+    if (_chatClearBtn) _chatClearBtn.style.display = currentUsername === 'ree1203' ? '' : 'none';
     showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
   } catch (err) {
     if (err.message === "PERMISSION_DENIED") {
@@ -3835,12 +3838,12 @@ async function fetchChatMessages() {
     if (!res.ok) return;
     const data = await res.json();
     if (!data) return;
-    const msgs = Object.values(data).sort((a, b) => a.t - b.t);
-    const newMsgs = msgs.filter(m => m.t > chatLastTs);
-    if (newMsgs.length === 0) return;
-    chatLastTs = msgs[msgs.length - 1].t;
+    const entries = Object.entries(data).sort((a, b) => a[1].t - b[1].t);
+    const newEntries = entries.filter(([, m]) => m.t > chatLastTs);
+    if (newEntries.length === 0) return;
+    chatLastTs = entries[entries.length - 1][1].t;
     const container = document.getElementById('chat-messages');
-    newMsgs.forEach(msg => {
+    newEntries.forEach(([key, msg]) => {
       // 말풍선 업데이트
       if (msg.u !== currentUsername) {
         showSpeechBubble(msg.u, msg.m);
@@ -3857,7 +3860,12 @@ async function fetchChatMessages() {
       const div = document.createElement('div');
       const isSelf = msg.u === currentUsername;
       div.className = 'chat-msg ' + (isSelf ? 'self-msg' : 'other-msg');
-      div.innerHTML = `<span class="chat-name">${msg.u}</span><span class="chat-text">${_escapeHtml(msg.m)}</span>`;
+      div.dataset.chatKey = key;
+      let delBtn = '';
+      if (currentUsername === 'ree1203') {
+        delBtn = `<button onclick="adminDeleteChatMsg('${key}',this.closest('.chat-msg'))" style="margin-left:6px;background:none;border:none;color:#ff4560;cursor:pointer;font-size:11px;opacity:0.7;padding:0 2px;" title="메시지 삭제">✕</button>`;
+      }
+      div.innerHTML = `<span class="chat-name">${_escapeHtml(msg.u)}</span><span class="chat-text">${_escapeHtml(msg.m)}</span>${delBtn}`;
       container.appendChild(div);
       // 최대 80개 유지
       while (container.children.length > 80) container.removeChild(container.firstChild);
@@ -3868,6 +3876,29 @@ async function fetchChatMessages() {
 
 function _escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── 관리자 채팅 삭제 (ree1203 전용) ──
+async function adminDeleteChatMsg(key, el) {
+  if (currentUsername !== 'ree1203') return;
+  try {
+    await fetch(`${DB_URL}chat/${key}.json`, { method: 'DELETE' });
+    if (el) el.remove();
+    adminLog('채팅 삭제: ' + key, 'warn');
+  } catch(e) { showNotice('❌ 채팅 삭제 실패'); }
+}
+
+async function adminClearAllChat() {
+  if (currentUsername !== 'ree1203') return;
+  if (!confirm('전체 채팅을 삭제하시겠습니까?')) return;
+  try {
+    await fetch(`${DB_URL}chat.json`, { method: 'DELETE' });
+    const container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = '';
+    chatLastTs = 0;
+    showNotice('🗑️ 전체 채팅 삭제 완료');
+    adminLog('전체 채팅 삭제', 'warn');
+  } catch(e) { showNotice('❌ 채팅 삭제 실패'); }
 }
 
 function showSpeechBubble(username, message) {
