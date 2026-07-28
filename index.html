@@ -669,6 +669,172 @@
     </div>
   </div>
 
+  <!-- ⚔️ 무기 HUD (ree1203 전용) -->
+  <div id="weapon-hud" style="display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:300;flex-direction:row;gap:10px;align-items:flex-end;">
+    <div class="weapon-slot" id="ws-0" onclick="equipWeapon(0)">
+      <div class="ws-cooldown" id="wcd-0"></div>
+      <div class="ws-icon">⚔️</div>
+      <div class="ws-name">소드</div>
+      <div class="ws-key">1</div>
+    </div>
+    <div class="weapon-slot" id="ws-1" onclick="equipWeapon(1)">
+      <div class="ws-cooldown" id="wcd-1"></div>
+      <div class="ws-icon">🔫</div>
+      <div class="ws-name">플건</div>
+      <div class="ws-key">2</div>
+    </div>
+    <div class="weapon-slot" id="ws-2" onclick="equipWeapon(2)">
+      <div class="ws-cooldown" id="wcd-2"></div>
+      <div class="ws-icon">🔥</div>
+      <div class="ws-name">방사기</div>
+      <div class="ws-key">3</div>
+    </div>
+  </div>
+  <div id="weapon-crosshair" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:299;width:24px;height:24px;"></div>
+
+  <!-- 회사 패널 (ree1203 + hsy 전용) -->
+  <button id="company-toggle-btn" style="display:none;position:fixed;top:108px;right:12px;z-index:9000;background:linear-gradient(135deg,#0a1628,#0d2347);color:#60a5fa;border:1px solid #2563eb;border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 0 14px rgba(37,99,235,0.5);" onclick="toggleCompanyPanel()">🏢 우리 회사</button>
+
+  <div id="company-panel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9500;width:560px;max-width:95vw;max-height:88vh;background:linear-gradient(160deg,#07111f,#0b1e38);border:1px solid #1e3a5f;border-radius:16px;overflow:hidden;box-shadow:0 8px 48px rgba(0,80,200,0.35);font-size:13px;color:#cce4ff;">
+    <!-- 헤더 -->
+    <div style="background:linear-gradient(90deg,#0d2347,#1a3a6b);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="font-size:26px;">🏢</span>
+        <div>
+          <div style="font-size:16px;font-weight:800;color:#93c5fd;letter-spacing:0.5px;">R&H Corporation</div>
+          <div style="font-size:10px;color:#64748b;margin-top:1px;">우리들의 나라 공식 파트너사</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span id="company-my-badge" style="font-size:11px;padding:3px 9px;border-radius:20px;font-weight:700;"></span>
+        <button onclick="toggleCompanyPanel()" style="background:none;border:none;color:#64748b;font-size:18px;cursor:pointer;line-height:1;">✕</button>
+      </div>
+    </div>
+
+    <!-- 탭 -->
+    <div style="display:flex;border-bottom:1px solid #1e3a5f;background:#080f1c;">
+      <button class="co-tab active" onclick="switchCoTab('home')" data-tab="home">🏠 홈</button>
+      <button class="co-tab" onclick="switchCoTab('chat')" data-tab="chat">💬 내부채팅</button>
+      <button class="co-tab" onclick="switchCoTab('task')" data-tab="task">📋 업무</button>
+      <button class="co-tab" onclick="switchCoTab('finance')" data-tab="finance">💰 재무</button>
+      <button class="co-tab" onclick="switchCoTab('notice')" data-tab="notice">📢 공지</button>
+    </div>
+
+    <!-- 탭 콘텐츠 공용 스크롤 -->
+    <div style="overflow-y:auto;max-height:calc(88vh - 120px);">
+
+      <!-- 홈 탭 -->
+      <div id="co-tab-home" class="co-content active" style="padding:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+          <div class="co-card">
+            <div class="co-card-label">회사 자금</div>
+            <div id="co-funds" class="co-card-value" style="color:#facc15;">₩0</div>
+          </div>
+          <div class="co-card">
+            <div class="co-card-label">오늘 업무</div>
+            <div id="co-task-count" class="co-card-value" style="color:#60a5fa;">0건</div>
+          </div>
+        </div>
+        <div style="background:#0d1f36;border-radius:10px;padding:12px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:700;">👥 구성원</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:18px;">👑</span>
+              <div>
+                <div style="font-weight:700;color:#fbbf24;">ree1203</div>
+                <div style="font-size:10px;color:#64748b;">대표이사 (CEO)</div>
+              </div>
+              <div id="co-status-ree" style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:#374151;"></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:18px;">💼</span>
+              <div>
+                <div style="font-weight:700;color:#c084fc;">hsy</div>
+                <div style="font-size:10px;color:#64748b;">부장 (Director)</div>
+              </div>
+              <div id="co-status-hsy" style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:#374151;"></div>
+            </div>
+          </div>
+        </div>
+        <div style="background:#0d1f36;border-radius:10px;padding:12px;">
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:700;">📋 최근 활동</div>
+          <div id="co-activity-log" style="font-size:11px;color:#475569;max-height:120px;overflow-y:auto;">로딩 중...</div>
+        </div>
+      </div>
+
+      <!-- 내부 채팅 탭 -->
+      <div id="co-tab-chat" class="co-content" style="padding:0;display:none;flex-direction:column;height:400px;">
+        <div id="co-chat-messages" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:6px;min-height:0;max-height:330px;"></div>
+        <div style="display:flex;gap:6px;padding:10px;border-top:1px solid #1e3a5f;background:#080f1c;">
+          <input id="co-chat-input" type="text" placeholder="사내 메시지를 입력하세요..." maxlength="200"
+            style="flex:1;background:#0d1f36;border:1px solid #1e3a5f;border-radius:8px;padding:8px 10px;color:#cce4ff;font-size:13px;outline:none;"
+            onkeydown="if(event.key==='Enter') sendCoChat()">
+          <button onclick="sendCoChat()" style="background:#1d4ed8;border:none;border-radius:8px;color:#fff;padding:8px 14px;cursor:pointer;font-weight:700;">전송</button>
+        </div>
+      </div>
+
+      <!-- 업무 탭 -->
+      <div id="co-tab-task" class="co-content" style="display:none;padding:16px;">
+        <div id="co-task-ceo-controls" style="display:none;margin-bottom:12px;background:#0d1f36;border-radius:10px;padding:12px;">
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:700;">📝 업무 지시 (대표 전용)</div>
+          <input id="co-task-input" type="text" placeholder="업무 내용 입력..." maxlength="200"
+            style="width:100%;background:#07111f;border:1px solid #1e3a5f;border-radius:8px;padding:8px;color:#cce4ff;font-size:13px;outline:none;box-sizing:border-box;margin-bottom:8px;">
+          <div style="display:flex;gap:6px;">
+            <select id="co-task-priority" style="flex:1;background:#07111f;border:1px solid #1e3a5f;border-radius:8px;padding:7px;color:#cce4ff;font-size:12px;">
+              <option value="normal">보통 우선순위</option>
+              <option value="high">높은 우선순위</option>
+              <option value="urgent">긴급</option>
+            </select>
+            <button onclick="coAssignTask()" style="background:#1d4ed8;border:none;border-radius:8px;color:#fff;padding:8px 14px;cursor:pointer;font-weight:700;">지시</button>
+          </div>
+        </div>
+        <div id="co-task-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
+      <!-- 재무 탭 -->
+      <div id="co-tab-finance" class="co-content" style="display:none;padding:16px;">
+        <div style="background:#0d1f36;border-radius:10px;padding:12px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#64748b;margin-bottom:6px;font-weight:700;">💳 회사 자금 현황</div>
+          <div style="font-size:24px;font-weight:800;color:#facc15;" id="co-funds-big">₩0</div>
+        </div>
+        <div id="co-finance-ceo" style="display:none;">
+          <div style="background:#0d1f36;border-radius:10px;padding:12px;margin-bottom:10px;">
+            <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:700;">💸 급여 지급 (hsy)</div>
+            <div style="display:flex;gap:6px;">
+              <input id="co-salary-amount" type="number" placeholder="금액" min="0"
+                style="flex:1;background:#07111f;border:1px solid #1e3a5f;border-radius:8px;padding:8px;color:#cce4ff;font-size:13px;outline:none;">
+              <button onclick="coPaySalary()" style="background:#16a34a;border:none;border-radius:8px;color:#fff;padding:8px 14px;cursor:pointer;font-weight:700;">지급</button>
+            </div>
+          </div>
+          <div style="background:#0d1f36;border-radius:10px;padding:12px;margin-bottom:10px;">
+            <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:700;">📥 회사 자금 입금</div>
+            <div style="display:flex;gap:6px;">
+              <input id="co-deposit-amount" type="number" placeholder="금액" min="0"
+                style="flex:1;background:#07111f;border:1px solid #1e3a5f;border-radius:8px;padding:8px;color:#cce4ff;font-size:13px;outline:none;">
+              <button onclick="coDeposit()" style="background:#1d4ed8;border:none;border-radius:8px;color:#fff;padding:8px 14px;cursor:pointer;font-weight:700;">입금</button>
+            </div>
+          </div>
+        </div>
+        <div style="background:#0d1f36;border-radius:10px;padding:12px;">
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:700;">📊 거래 내역</div>
+          <div id="co-finance-log" style="font-size:11px;color:#475569;max-height:150px;overflow-y:auto;">내역 없음</div>
+        </div>
+      </div>
+
+      <!-- 공지 탭 -->
+      <div id="co-tab-notice" class="co-content" style="display:none;padding:16px;">
+        <div id="co-notice-ceo" style="display:none;background:#0d1f36;border-radius:10px;padding:12px;margin-bottom:12px;">
+          <div style="font-size:11px;color:#64748b;margin-bottom:8px;font-weight:700;">📢 공지 작성 (대표 전용)</div>
+          <textarea id="co-notice-input" rows="3" maxlength="500" placeholder="공지 내용 입력..."
+            style="width:100%;background:#07111f;border:1px solid #1e3a5f;border-radius:8px;padding:8px;color:#cce4ff;font-size:13px;outline:none;resize:none;box-sizing:border-box;margin-bottom:8px;"></textarea>
+          <button onclick="coPostNotice()" style="background:#1d4ed8;border:none;border-radius:8px;color:#fff;padding:8px 16px;cursor:pointer;font-weight:700;width:100%;">공지 등록</button>
+        </div>
+        <div id="co-notice-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
+
+    </div><!-- /scroll -->
+  </div><!-- /company-panel -->
+
   <!-- HUD floating Dashboard Toggle button -->
   <button id="dashboard-toggle-btn" class="glass-panel" onclick="toggleDashboard(true)">🏛️ 대통령 집무실 (Tab)</button>
   <button id="job-center-btn" class="glass-panel" onclick="openJobModal()" style="position:fixed;bottom:72px;left:50%;transform:translateX(-50%);z-index:100;padding:8px 18px;font-size:13px;cursor:pointer;">💼 <span id="job-btn-label">직업 센터</span></button>
@@ -908,6 +1074,27 @@
       </div>
       <div id="hsy-log-box" style="max-height:140px;overflow-y:auto;font-size:11px;font-family:monospace;color:#a78bfa;background:rgba(0,0,0,0.3);border-radius:6px;padding:8px;line-height:1.6;">로그 없음</div>
     </div>
+
+    <!-- hsy 이벤트 섹션 -->
+    <div style="background:rgba(20,5,40,0.7);border:1px solid #5b21b6;border-radius:10px;padding:12px;margin-top:10px;">
+      <div style="font-size:13px;font-weight:700;color:#a78bfa;margin-bottom:10px;">🎉 이벤트 개최</div>
+      <input type="text" id="hsy-event-title" placeholder="이벤트 제목" maxlength="40"
+        style="width:100%;background:rgba(15,5,30,0.8);border:1px solid #4c1d95;border-radius:6px;padding:6px 10px;color:#e2e8f0;font-size:13px;box-sizing:border-box;margin-bottom:6px;">
+      <input type="text" id="hsy-event-desc" placeholder="이벤트 설명" maxlength="100"
+        style="width:100%;background:rgba(15,5,30,0.8);border:1px solid #4c1d95;border-radius:6px;padding:6px 10px;color:#e2e8f0;font-size:13px;box-sizing:border-box;margin-bottom:6px;">
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input type="number" id="hsy-event-reward" placeholder="보상 금액 ₩" min="0"
+          style="flex:1;background:rgba(15,5,30,0.8);border:1px solid #4c1d95;border-radius:6px;padding:6px 10px;color:#e2e8f0;font-size:13px;">
+        <select id="hsy-event-duration" style="flex:1;background:rgba(15,5,30,0.8);border:1px solid #4c1d95;border-radius:6px;padding:6px;color:#e2e8f0;font-size:12px;">
+          <option value="300">5분</option>
+          <option value="600">10분</option>
+          <option value="1800">30분</option>
+          <option value="3600">1시간</option>
+        </select>
+      </div>
+      <button onclick="hsyStartEvent()" style="width:100%;background:linear-gradient(135deg,#7c3aed,#4c1d95);border:none;border-radius:8px;color:#fff;padding:8px;font-size:13px;font-weight:700;cursor:pointer;">🎉 이벤트 시작</button>
+    </div>
+  </div>
   </div>
 
   <!-- 👑 관리자 패널 (ree1203 전용) -->
@@ -1684,6 +1871,6 @@
   <!-- Local Three.js -->
   <script src="three.min.js"></script>
   <script src="simulation.js"></script>
-  <script src="game.js?v=24"></script>
+  <script src="game.js?v=26"></script>
 </body>
 </html>

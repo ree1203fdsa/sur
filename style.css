@@ -3626,3 +3626,125 @@ body.is-mobile-device #settings-panel {
 .owner-section:first-child {
   margin-top: 0;
 }
+
+/* ── 무기 HUD (ree1203 전용) ── */
+#weapon-hud { display: none; }
+.weapon-slot {
+  position: relative;
+  width: 62px;
+  height: 72px;
+  background: rgba(5, 8, 20, 0.88);
+  border: 2px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.1s, border-color 0.15s, box-shadow 0.15s;
+  user-select: none;
+}
+.weapon-slot:hover { transform: translateY(-3px); border-color: rgba(255,255,255,0.3); }
+.weapon-slot.ws-active-0 { border-color: #00ffcc; box-shadow: 0 0 18px rgba(0,255,200,0.55), inset 0 0 12px rgba(0,255,200,0.1); background: rgba(0,40,35,0.85); }
+.weapon-slot.ws-active-1 { border-color: #bf00ff; box-shadow: 0 0 18px rgba(191,0,255,0.55), inset 0 0 12px rgba(191,0,255,0.1); background: rgba(25,0,40,0.85); }
+.weapon-slot.ws-active-2 { border-color: #ff5500; box-shadow: 0 0 18px rgba(255,85,0,0.55), inset 0 0 12px rgba(255,85,0,0.1); background: rgba(40,10,0,0.85); }
+.ws-icon { font-size: 24px; line-height: 1; }
+.ws-name { font-size: 9px; color: #888; margin-top: 3px; font-weight: 600; letter-spacing: 0.3px; }
+.ws-key {
+  position: absolute; top: 4px; right: 6px;
+  font-size: 10px; font-weight: 700; color: #555;
+}
+.ws-cooldown {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.6);
+  border-radius: 10px;
+  transform-origin: bottom;
+  transform: scaleY(0);
+  transition: transform 0.05s linear;
+  pointer-events: none;
+}
+#weapon-crosshair::before,
+#weapon-crosshair::after {
+  content: '';
+  position: absolute;
+  background: rgba(255,255,255,0.85);
+  border-radius: 2px;
+}
+#weapon-crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+#weapon-crosshair::after  { height: 2px; width: 100%; top: 50%;  transform: translateY(-50%); }
+
+/* ── 회사 패널 (R&H Corporation) ── */
+.co-tab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 10px 4px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.co-tab:hover { color: #93c5fd; }
+.co-tab.active { color: #60a5fa; border-bottom-color: #2563eb; }
+.co-content { display: none; }
+.co-content.active { display: block; }
+.co-card {
+  background: #0d1f36;
+  border: 1px solid #1e3a5f;
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.co-card-label { font-size: 10px; color: #64748b; font-weight: 700; margin-bottom: 4px; }
+.co-card-value { font-size: 20px; font-weight: 800; }
+.co-chat-bubble {
+  max-width: 80%;
+  padding: 7px 11px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.co-chat-bubble.mine {
+  align-self: flex-end;
+  background: #1d4ed8;
+  color: #dbeafe;
+  border-bottom-right-radius: 3px;
+}
+.co-chat-bubble.theirs {
+  align-self: flex-start;
+  background: #1e3a5f;
+  color: #cce4ff;
+  border-bottom-left-radius: 3px;
+}
+.co-chat-sender { font-size: 10px; font-weight: 700; margin-bottom: 2px; }
+.co-task-item {
+  background: #0d1f36;
+  border: 1px solid #1e3a5f;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.co-task-item.done { opacity: 0.5; }
+.co-task-priority-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.co-finance-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid #1e3a5f;
+  font-size: 11px;
+}
+.co-notice-card {
+  background: #0d1f36;
+  border-left: 3px solid #2563eb;
+  border-radius: 0 10px 10px 0;
+  padding: 10px 12px;
+}

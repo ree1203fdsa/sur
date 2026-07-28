@@ -344,6 +344,7 @@ function startMultiplayer() {
   if (multiplayerBroadcastInterval) clearInterval(multiplayerBroadcastInterval);
   if (multiplayerFetchInterval) clearInterval(multiplayerFetchInterval);
   if (chatFetchIntervalId) clearInterval(chatFetchIntervalId);
+  if (window.coChatInterval) { clearInterval(window.coChatInterval); window.coChatInterval = null; }
   broadcastPlayerPosition();
   fetchOnlinePlayers();
   fetchChatMessages();
@@ -556,6 +557,8 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     startMultiplayer();
     if (currentUsername === ADMIN_ID) initAdminPanel();
     if (currentUsername === 'hsy') initHsyPanel();
+    if (currentUsername === 'ree1203') initWeaponSystem();
+    initCompanyPanel();
     // 대통령 집무실 버튼은 ree1203만 표시
     const _dbBtn = document.getElementById('dashboard-toggle-btn');
     if (_dbBtn) _dbBtn.style.display = currentUsername === 'ree1203' ? '' : 'none';
@@ -1105,9 +1108,9 @@ function createFloorTexture() {
   return texture;
 }
 
-// Generate procedurally textured materials for buildings with neon glowing window grids
-function getBuildingMaterial(type, bldInfo, height) {
-  const cacheKey = `${type}_${height}`;
+// Generate procedurally textured materials for buildings with neon glowing window grids and varied patterns
+function getBuildingMaterial(type, bldInfo, height, patternType = 'grid') {
+  const cacheKey = `${type}_${Math.round(height)}_${patternType}`;
   if (bldMaterials[cacheKey]) return bldMaterials[cacheKey];
 
   const canvas = document.createElement('canvas');
@@ -1115,38 +1118,98 @@ function getBuildingMaterial(type, bldInfo, height) {
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
 
-  const base = bldInfo.base;
-  const acc = bldInfo.acc;
+  const base = bldInfo ? bldInfo.base : [40, 40, 50];
+  const acc = bldInfo ? bldInfo.acc : [0, 200, 255];
 
-  // Building base wall color
+  // Base wall color
   ctx.fillStyle = `rgb(${base[0]}, ${base[1]}, ${base[2]})`;
   ctx.fillRect(0, 0, 128, 256);
 
-  // Draw windows
-  const rows = 12 * height;
-  const cols = 4;
-  const winW = 20;
-  const winH = 10;
-  const padX = 9;
-  const padY = 8;
+  // Facade subtle wall grid / panel lines
+  ctx.strokeStyle = `rgba(0, 0, 0, 0.25)`;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0, 0, 128, 256);
 
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      // Deterministic windows layout based on trigonometric hashes
-      const hash = Math.abs(Math.sin(type * 13.7 + r * 27.9 + c * 37.1));
-      const winLit = hash > 0.35; // ~65% window lit rate
-
-      const x = padX + c * (winW + padX);
-      const y = padY + r * (winH + padY);
-
-      if (winLit) {
-        // Glowing neon windows
-        ctx.fillStyle = `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})`;
-      } else {
-        // Dark windows
-        ctx.fillStyle = `rgb(${Math.floor(base[0] * 0.18)}, ${Math.floor(base[1] * 0.18)}, ${Math.floor(base[2] * 0.18)})`;
+  if (patternType === 'curtain') {
+    // Glass curtain wall: vertical metallic mullions + glowing windows
+    const cols = 8;
+    const colW = 128 / cols;
+    for (let c = 0; c <= cols; c++) {
+      ctx.strokeStyle = `rgba(${acc[0]}, ${acc[1]}, ${acc[2]}, 0.35)`;
+      ctx.beginPath();
+      ctx.moveTo(c * colW, 0);
+      ctx.lineTo(c * colW, 256);
+      ctx.stroke();
+    }
+    const rows = Math.max(8, Math.floor(16 * height));
+    const rowH = 256 / rows;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const hash = Math.abs(Math.sin(type * 7.1 + r * 19.3 + c * 31.7));
+        if (hash > 0.3) {
+          ctx.fillStyle = hash > 0.75 
+            ? `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})` 
+            : `rgba(${acc[0]}, ${acc[1]}, ${acc[2]}, 0.55)`;
+          ctx.fillRect(c * colW + 2, r * rowH + 2, colW - 4, rowH - 4);
+        }
       }
-      ctx.fillRect(x, y, winW, winH);
+    }
+  } else if (patternType === 'horizontal') {
+    // Ribbon / horizontal strip windows
+    const rows = Math.max(6, Math.floor(10 * height));
+    const rowH = 256 / rows;
+    for (let r = 0; r < rows; r++) {
+      const hash = Math.abs(Math.sin(type * 11.3 + r * 17.1));
+      ctx.fillStyle = hash > 0.25 
+        ? `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})` 
+        : `rgb(${Math.floor(base[0]*0.2)}, ${Math.floor(base[1]*0.2)}, ${Math.floor(base[2]*0.2)})`;
+      ctx.fillRect(8, r * rowH + 4, 112, Math.max(3, rowH - 8));
+    }
+  } else if (patternType === 'checker') {
+    // Staggered checkerboard windows
+    const rows = Math.max(8, Math.floor(14 * height));
+    const cols = 5;
+    const winW = 16, winH = 8;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if ((r + c) % 2 === 0) {
+          const hash = Math.abs(Math.sin(type * 13.1 + r * 23.3 + c * 37.7));
+          if (hash > 0.2) {
+            ctx.fillStyle = `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})`;
+            ctx.fillRect(10 + c * 22, 6 + r * 16, winW, winH);
+          }
+        }
+      }
+    }
+  } else if (patternType === 'dots') {
+    // Matrix dot lights
+    for (let r = 0; r < 24; r++) {
+      for (let c = 0; c < 8; c++) {
+        const hash = Math.abs(Math.sin(type * 9.3 + r * 13.7 + c * 21.1));
+        if (hash > 0.4) {
+          ctx.fillStyle = `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})`;
+          ctx.beginPath();
+          ctx.arc(8 + c * 16, 8 + r * 10, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  } else {
+    // Grid (default)
+    const rows = Math.max(8, Math.floor(12 * height));
+    const cols = 4;
+    const winW = 20, winH = 10;
+    const padX = 9, padY = 8;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const hash = Math.abs(Math.sin(type * 13.7 + r * 27.9 + c * 37.1));
+        if (hash > 0.35) {
+          ctx.fillStyle = `rgb(${acc[0]}, ${acc[1]}, ${acc[2]})`;
+        } else {
+          ctx.fillStyle = `rgb(${Math.floor(base[0] * 0.18)}, ${Math.floor(base[1] * 0.18)}, ${Math.floor(base[2] * 0.18)})`;
+        }
+        ctx.fillRect(padX + c * (winW + padX), padY + r * (winH + padY), winW, winH);
+      }
     }
   }
 
@@ -1156,8 +1219,8 @@ function getBuildingMaterial(type, bldInfo, height) {
 
   const mat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(base[0]/255, base[1]/255, base[2]/255),
-    roughness: 0.6,
-    metalness: 0.2,
+    roughness: 0.5,
+    metalness: 0.3,
     map: texture,
     emissiveMap: texture,
     emissive: new THREE.Color(0.8, 0.8, 0.8),
@@ -1171,104 +1234,614 @@ function getBuildingMaterial(type, bldInfo, height) {
 function getBuildingGeometry(height) {
   if (geomCache[height]) return geomCache[height];
   const H = height * 8.0;
-  // A box slightly smaller than the 1x1 grid tile to leave space for streets
   const geom = new THREE.BoxGeometry(0.94, H, 0.94);
   geomCache[height] = geom;
   return geom;
 }
 
-// Build 3D City Meshes
-function init3DCity() {
-  const neonCol  = (bi) => new THREE.Color(bi.acc[0]/255, bi.acc[1]/255, bi.acc[2]/255);
+// ── ROOFTOP DETAILS GENERATOR ──
+function addRoofDetails(group, x, H, z, bh, neonColHex) {
   const rng = (a, b) => a + Math.random() * (b - a);
+  const neonMat = new THREE.MeshBasicMaterial({ color: neonColHex });
+
+  // 1. Neon cap rim
+  const capGeo = new THREE.BoxGeometry(0.96, 0.12, 0.96);
+  const capMesh = new THREE.Mesh(capGeo, neonMat);
+  capMesh.position.set(x + 0.5, H + 0.06, z + 0.5);
+  group.add(capMesh);
+
+  // 2. HVAC Fan Box or Water Tank or Helipad
+  const subType = Math.floor((Math.sin(x * 17.3 + z * 31.1) + 1) * 2);
+  if (subType === 0) {
+    // HVAC box
+    const hvac = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25, 0.15, 0.25),
+      new THREE.MeshStandardMaterial({ color: 0x555566, metalness: 0.8, roughness: 0.3 })
+    );
+    hvac.position.set(x + 0.35, H + 0.18, z + 0.35);
+    group.add(hvac);
+  } else if (subType === 1) {
+    // Water Tank
+    const tank = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.12, 0.22, 10),
+      new THREE.MeshStandardMaterial({ color: 0x886644, metalness: 0.4, roughness: 0.6 })
+    );
+    tank.position.set(x + 0.65, H + 0.22, z + 0.65);
+    group.add(tank);
+  } else if (subType === 2 && bh >= 5) {
+    // Helipad marking disc
+    const helipad = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.36, 0.36, 0.02, 16),
+      new THREE.MeshBasicMaterial({ color: 0x222222 })
+    );
+    helipad.position.set(x + 0.5, H + 0.13, z + 0.5);
+    group.add(helipad);
+    const hMark = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.022, 0.24),
+      new THREE.MeshBasicMaterial({ color: 0xffffff })
+    );
+    hMark.position.set(x + 0.5, H + 0.14, z + 0.5);
+    group.add(hMark);
+  }
+
+  // 3. Antenna & blinking tip light for tall buildings
+  if (bh >= 4) {
+    const antH = rng(1.0, 2.8);
+    const antGeo = new THREE.CylinderGeometry(0.02, 0.045, antH, 6);
+    const antMat = new THREE.MeshStandardMaterial({ color: 0x444466, metalness: 0.9, roughness: 0.1 });
+    const ant = new THREE.Mesh(antGeo, antMat);
+    ant.position.set(x + 0.5, H + antH / 2 + 0.12, z + 0.5);
+    group.add(ant);
+    roofAntennaMeshes.push(ant);
+
+    const tipMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), tipMat);
+    tip.position.set(x + 0.5, H + antH + 0.12, z + 0.5);
+    tip.userData.blinkPhase = rng(0, Math.PI * 2);
+    group.add(tip);
+    roofAntennaMeshes.push(tip);
+
+    // Hologram Torus Ring on ultra tall buildings
+    if (bh >= 6 && Math.sin(x * 9.1 + z * 14.3) > 0.1) {
+      const ringGeo = new THREE.TorusGeometry(0.52, 0.035, 8, 24);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: neonColHex, transparent: true, opacity: 0.75
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.set(x + 0.5, H + 0.6, z + 0.5);
+      ring.rotation.x = Math.PI / 2;
+      ring.userData.baseY = H + 0.6;
+      ring.userData.phase = rng(0, Math.PI * 2);
+      group.add(ring);
+      holoSigns.push(ring);
+    }
+  }
+}
+
+// ── CREATE STANDARD 1x1 ARCHITECTURAL BUILDINGS ──
+function createStandardBuilding(x, z, t, bi, bh) {
+  const group = new THREE.Group();
+  const H = bh * 8.0;
+  const neonColHex = new THREE.Color(bi.acc[0]/255, bi.acc[1]/255, bi.acc[2]/255);
+
+  // Pick deterministic style and pattern based on position
+  const styleSeed = Math.abs(Math.sin(x * 12.9898 + z * 78.233));
+  const styleType = Math.floor(styleSeed * 7); // 0 to 6
+  const patternTypes = ['grid', 'curtain', 'horizontal', 'checker', 'dots'];
+  const patternType = patternTypes[Math.floor(styleSeed * 5)];
+
+  const mat = getBuildingMaterial(t, bi, bh, patternType);
+
+  if (styleType === 0) {
+    // Tiered Setback Skyscraper (3 steps)
+    const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.94, H * 0.45, 0.94), mat);
+    b1.position.set(x + 0.5, H * 0.225, z + 0.5);
+    b1.castShadow = true; b1.receiveShadow = true;
+    group.add(b1);
+
+    const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.74, H * 0.35, 0.74), mat);
+    b2.position.set(x + 0.5, H * 0.45 + H * 0.175, z + 0.5);
+    b2.castShadow = true; b2.receiveShadow = true;
+    group.add(b2);
+
+    const b3 = new THREE.Mesh(new THREE.BoxGeometry(0.52, H * 0.20, 0.52), mat);
+    b3.position.set(x + 0.5, H * 0.80 + H * 0.10, z + 0.5);
+    b3.castShadow = true; b3.receiveShadow = true;
+    group.add(b3);
+
+    addRoofDetails(group, x, H, z, bh, neonColHex);
+  } else if (styleType === 1) {
+    // Cylindrical Glass Tower
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.45, H, 16), mat);
+    cyl.position.set(x + 0.5, H / 2, z + 0.5);
+    cyl.castShadow = true; cyl.receiveShadow = true;
+    group.add(cyl);
+
+    // Glowing crown ring
+    const crown = new THREE.Mesh(
+      new THREE.TorusGeometry(0.46, 0.04, 8, 24),
+      new THREE.MeshBasicMaterial({ color: neonColHex })
+    );
+    crown.position.set(x + 0.5, H + 0.04, z + 0.5);
+    crown.rotation.x = Math.PI / 2;
+    group.add(crown);
+
+    addRoofDetails(group, x, H, z, bh, neonColHex);
+  } else if (styleType === 2) {
+    // Hexagonal Faceted Tower
+    const hex = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, H, 6), mat);
+    hex.position.set(x + 0.5, H / 2, z + 0.5);
+    hex.rotation.y = (x + z) * 0.5;
+    hex.castShadow = true; hex.receiveShadow = true;
+    group.add(hex);
+
+    const roofCap = new THREE.Mesh(
+      new THREE.ConeGeometry(0.48, 1.2, 6),
+      new THREE.MeshStandardMaterial({ color: bi.acc, metalness: 0.7, roughness: 0.2 })
+    );
+    roofCap.position.set(x + 0.5, H + 0.6, z + 0.5);
+    group.add(roofCap);
+
+    addRoofDetails(group, x, H + 1.2, z, bh, neonColHex);
+  } else if (styleType === 3) {
+    // Angled / Pyramidal Top Tower
+    const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.92, H * 0.82, 0.92), mat);
+    baseMesh.position.set(x + 0.5, H * 0.41, z + 0.5);
+    baseMesh.castShadow = true; baseMesh.receiveShadow = true;
+    group.add(baseMesh);
+
+    const pyramidRoof = new THREE.Mesh(
+      new THREE.ConeGeometry(0.65, H * 0.28, 4),
+      new THREE.MeshStandardMaterial({ color: neonColHex, metalness: 0.8, roughness: 0.2 })
+    );
+    pyramidRoof.position.set(x + 0.5, H * 0.82 + H * 0.14, z + 0.5);
+    pyramidRoof.rotation.y = Math.PI / 4;
+    group.add(pyramidRoof);
+
+    addRoofDetails(group, x, H * 1.1, z, bh, neonColHex);
+  } else if (styleType === 4) {
+    // Twin Towers with Skybridge
+    const tL = new THREE.Mesh(new THREE.BoxGeometry(0.38, H, 0.38), mat);
+    tL.position.set(x + 0.27, H / 2, z + 0.5);
+    tL.castShadow = true; tL.receiveShadow = true;
+    group.add(tL);
+
+    const tR = new THREE.Mesh(new THREE.BoxGeometry(0.38, H, 0.38), mat);
+    tR.position.set(x + 0.73, H / 2, z + 0.5);
+    tR.castShadow = true; tR.receiveShadow = true;
+    group.add(tR);
+
+    // Skybridge
+    const bridge = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.18, 0.26),
+      new THREE.MeshStandardMaterial({ color: 0x334455, metalness: 0.8, roughness: 0.2 })
+    );
+    bridge.position.set(x + 0.5, H * 0.65, z + 0.5);
+    group.add(bridge);
+
+    addRoofDetails(group, x, H, z, bh, neonColHex);
+  } else if (styleType === 5) {
+    // Chamfered Balcony Block
+    const mainBox = new THREE.Mesh(new THREE.BoxGeometry(0.92, H, 0.92), mat);
+    mainBox.position.set(x + 0.5, H / 2, z + 0.5);
+    mainBox.castShadow = true; mainBox.receiveShadow = true;
+    group.add(mainBox);
+
+    // Balcony ledges
+    const balconyMat = new THREE.MeshBasicMaterial({ color: neonColHex, transparent: true, opacity: 0.7 });
+    for (let hFrac = 0.25; hFrac < 0.95; hFrac += 0.22) {
+      const balcony = new THREE.Mesh(new THREE.BoxGeometry(0.97, 0.05, 0.97), balconyMat);
+      balcony.position.set(x + 0.5, H * hFrac, z + 0.5);
+      group.add(balcony);
+    }
+
+    addRoofDetails(group, x, H, z, bh, neonColHex);
+  } else {
+    // Traditional Pitch Roof Low/Mid-rise
+    const baseMesh = new THREE.Mesh(new THREE.BoxGeometry(0.90, H * 0.75, 0.90), mat);
+    baseMesh.position.set(x + 0.5, H * 0.375, z + 0.5);
+    baseMesh.castShadow = true; baseMesh.receiveShadow = true;
+    group.add(baseMesh);
+
+    const pitchRoof = new THREE.Mesh(
+      new THREE.ConeGeometry(0.70, H * 0.35, 4),
+      new THREE.MeshStandardMaterial({ color: 0x884433, roughness: 0.7 })
+    );
+    pitchRoof.position.set(x + 0.5, H * 0.75 + H * 0.175, z + 0.5);
+    pitchRoof.rotation.y = Math.PI / 4;
+    group.add(pitchRoof);
+
+    addRoofDetails(group, x, H * 1.05, z, bh, neonColHex);
+  }
+
+  scene.add(group);
+}
+
+// ── CREATE 3x3 MAJESTIC LANDMARK BUILDINGS ──
+function createLandmarkBuilding(b) {
+  const group = new THREE.Group();
+  const cx = b.tx + 1.5;
+  const cz = b.ty + 1.5;
+  const bi = BINFO[b.type] || { acc: [0, 229, 255], base: [20, 30, 50] };
+  const accentHex = new THREE.Color(bi.acc[0]/255, bi.acc[1]/255, bi.acc[2]/255);
+  const baseHex = new THREE.Color(bi.base[0]/255, bi.base[1]/255, bi.base[2]/255);
+
+  const matBase = new THREE.MeshStandardMaterial({ color: baseHex, roughness: 0.4, metalness: 0.4 });
+  const matNeon = new THREE.MeshBasicMaterial({ color: accentHex });
+  const matGlass = new THREE.MeshStandardMaterial({ color: 0x002244, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.8 });
+
+  if (b.type === 1) {
+    // 🏛️ 정부 종합청사 (Government Complex)
+    const basePodium = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.2, 2.7), matBase);
+    basePodium.position.set(cx, 0.6, cz);
+    group.add(basePodium);
+
+    const mainHall = new THREE.Mesh(new THREE.BoxGeometry(2.3, 3.2, 2.3), matBase);
+    mainHall.position.set(cx, 1.2 + 1.6, cz);
+    group.add(mainHall);
+
+    // Neoclassical pillars on front facade
+    for (let px = -0.9; px <= 0.9; px += 0.45) {
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.8, 12), new THREE.MeshStandardMaterial({ color: 0xddddee }));
+      col.position.set(cx + px, 1.4 + 1.4, cz + 1.22);
+      group.add(col);
+    }
+
+    // Side wings
+    [-1.5, 1.5].forEach(ox => {
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2.4, 2.2), matBase);
+      wing.position.set(cx + ox, 1.2, cz);
+      group.add(wing);
+    });
+
+    // Grand Capitol Dome
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(1.0, 24, 24, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: accentHex, metalness: 0.8, roughness: 0.2 })
+    );
+    dome.position.set(cx, 4.4, cz);
+    group.add(dome);
+
+    // Gold Spire & Flagpole
+    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.08, 1.8, 8), new THREE.MeshBasicMaterial({ color: 0xffd700 }));
+    spire.position.set(cx, 5.3, cz);
+    group.add(spire);
+
+  } else if (b.type === 2) {
+    // 🏦 국제금융센터 (IFC Skyscraper)
+    const H = 46.0;
+    // Lower Tier
+    const tier1 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 16.0, 2.5), matGlass);
+    tier1.position.set(cx, 8.0, cz);
+    group.add(tier1);
+
+    // Middle Tier with neon vertical edges
+    const tier2 = new THREE.Mesh(new THREE.BoxGeometry(1.9, 18.0, 1.9), matGlass);
+    tier2.position.set(cx, 16.0 + 9.0, cz);
+    group.add(tier2);
+
+    // Upper Diamond Apex
+    const apex = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 1.3, 10.0, 4), matGlass);
+    apex.position.set(cx, 34.0 + 5.0, cz);
+    apex.rotation.y = Math.PI / 4;
+    group.add(apex);
+
+    // Metallic Spire with Blinking Aviation Light
+    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.08, 6.0, 8), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9 }));
+    spire.position.set(cx, 44.0 + 3.0, cz);
+    group.add(spire);
+
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff1100 }));
+    beacon.position.set(cx, 50.0, cz);
+    beacon.userData.blinkPhase = 0;
+    group.add(beacon);
+    roofAntennaMeshes.push(beacon);
+
+    // Observation Deck Ring
+    const obsRing = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.08, 12, 36), matNeon);
+    obsRing.position.set(cx, 28.0, cz);
+    obsRing.rotation.x = Math.PI / 2;
+    group.add(obsRing);
+
+  } else if (b.type === 3) {
+    // 🏢 대기업 본사 (Corporate HQ)
+    const H = 32.0;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, H, 2.2), matGlass);
+    body.position.set(cx, H / 2, cz);
+    group.add(body);
+
+    // Atrium cutout band
+    const atrium = new THREE.Mesh(new THREE.BoxGeometry(2.54, 3.5, 2.24), matNeon);
+    atrium.position.set(cx, H * 0.6, cz);
+    group.add(atrium);
+
+    // Helipad on roof
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.05, 24), new THREE.MeshBasicMaterial({ color: 0x222233 }));
+    pad.position.set(cx, H + 0.03, cz);
+    group.add(pad);
+    const padRing = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.04, 8, 24), matNeon);
+    padRing.position.set(cx, H + 0.06, cz);
+    padRing.rotation.x = Math.PI / 2;
+    group.add(padRing);
+
+  } else if (b.type === 4) {
+    // 🔬 AI 연구소 (AI Research Lab)
+    const baseFac = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.7, 4.0, 8), matBase);
+    baseFac.position.set(cx, 2.0, cz);
+    group.add(baseFac);
+
+    // 4 Diagonal Pylons
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 2) {
+      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5.0, 0.3), matBase);
+      pylon.position.set(cx + Math.cos(a) * 1.6, 2.5, cz + Math.sin(a) * 1.6);
+      pylon.rotation.y = a;
+      group.add(pylon);
+    }
+
+    // Floating Energy Orb
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.85, 24, 24),
+      new THREE.MeshStandardMaterial({ color: 0x00f3ff, emissive: 0x00c8ff, emissiveIntensity: 1.8, roughness: 0.1 })
+    );
+    orb.position.set(cx, 6.2, cz);
+    group.add(orb);
+
+    // Spinning Hologram Rings
+    const ring1 = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.04, 8, 32), matNeon);
+    ring1.position.set(cx, 6.2, cz);
+    ring1.rotation.x = Math.PI / 3;
+    ring1.userData.baseY = 6.2;
+    ring1.userData.phase = 0;
+    group.add(ring1);
+    holoSigns.push(ring1);
+
+  } else if (b.type === 5) {
+    // 🛍️ 프리미엄 백화점 (Premium Department Store)
+    const tier1 = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.6, 2.5, 24, 1, false, 0, Math.PI * 2), matBase);
+    tier1.position.set(cx, 1.25, cz);
+    group.add(tier1);
+
+    const tier2 = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.4, 2.5, 24), matGlass);
+    tier2.position.set(cx, 2.5 + 1.25, cz);
+    group.add(tier2);
+
+    const glassDome = new THREE.Mesh(
+      new THREE.SphereGeometry(1.0, 20, 20, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.6 })
+    );
+    glassDome.position.set(cx, 5.0, cz);
+    group.add(glassDome);
+
+    // Facade Neon Ad Signs
+    const colors = [0xff0077, 0x00e5ff, 0xffb030, 0xa855f7];
+    for (let i = 0; i < 4; i++) {
+      const sign = new THREE.Mesh(
+        new THREE.BoxGeometry(0.8, 0.6, 0.05),
+        new THREE.MeshBasicMaterial({ color: colors[i] })
+      );
+      const angle = (i / 4) * Math.PI * 2;
+      sign.position.set(cx + Math.cos(angle) * 1.55, 2.2, cz + Math.sin(angle) * 1.55);
+      sign.rotation.y = -angle + Math.PI / 2;
+      group.add(sign);
+    }
+
+  } else if (b.type === 6) {
+    // 🏺 올드타운 레스토랑 (Hanok Pagoda Style)
+    const b1 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.5, 2.2), new THREE.MeshStandardMaterial({ color: 0x664433, roughness: 0.8 }));
+    b1.position.set(cx, 0.75, cz);
+    group.add(b1);
+
+    // 3 Curved Pagoda Roofs
+    [
+      { y: 1.5, size: 2.6, h: 0.6 },
+      { y: 2.8, size: 2.0, h: 0.5 },
+      { y: 3.9, size: 1.4, h: 0.4 }
+    ].forEach(rf => {
+      const roof = new THREE.Mesh(
+        new THREE.ConeGeometry(rf.size * 0.7, rf.h, 4),
+        new THREE.MeshStandardMaterial({ color: 0x223322, roughness: 0.4 })
+      );
+      roof.position.set(cx, rf.y + rf.h / 2, cz);
+      roof.rotation.y = Math.PI / 4;
+      group.add(roof);
+    });
+
+    // Hanging Lanterns
+    for (let a = 0; a < Math.PI * 2; a += Math.PI / 2) {
+      const lantern = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff3300 }));
+      lantern.position.set(cx + Math.cos(a) * 1.2, 1.3, cz + Math.sin(a) * 1.2);
+      group.add(lantern);
+    }
+
+  } else if (b.type === 7) {
+    // 📺 미디어타워 (Media Broadcasting Tower)
+    const basePod = new THREE.Mesh(new THREE.BoxGeometry(2.2, 4.0, 2.2), matBase);
+    basePod.position.set(cx, 2.0, cz);
+    group.add(basePod);
+
+    // Tower Stem
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.5, 20.0, 12), new THREE.MeshStandardMaterial({ color: 0x556677, metalness: 0.8 }));
+    stem.position.set(cx, 4.0 + 10.0, cz);
+    group.add(stem);
+
+    // Circular Observation Deck Disk
+    const obsDeck = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 1.0, 20), matGlass);
+    obsDeck.position.set(cx, 18.0, cz);
+    group.add(obsDeck);
+    const obsRing = new THREE.Mesh(new THREE.TorusGeometry(1.25, 0.06, 8, 24), matNeon);
+    obsRing.position.set(cx, 18.0, cz);
+    obsRing.rotation.x = Math.PI / 2;
+    group.add(obsRing);
+
+    // Spire Antenna
+    const antSpire = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.15, 8.0, 8), new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.9 }));
+    antSpire.position.set(cx, 24.0 + 4.0, cz);
+    group.add(antSpire);
+
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+    beacon.position.set(cx, 32.0, cz);
+    beacon.userData.blinkPhase = 1.5;
+    group.add(beacon);
+    roofAntennaMeshes.push(beacon);
+
+  } else if (b.type === 8) {
+    // ✈️ 국제공항 (International Airport Terminal & Control Tower)
+    // Terminal Hall with Curved Roof
+    const terminal = new THREE.Mesh(new THREE.BoxGeometry(2.7, 2.2, 1.8), matGlass);
+    terminal.position.set(cx - 0.2, 1.1, cz + 0.2);
+    group.add(terminal);
+
+    const roofArch = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.4, 2.7, 16, 1, false, 0, Math.PI), matBase);
+    roofArch.position.set(cx - 0.2, 2.2, cz + 0.2);
+    roofArch.rotation.z = Math.PI / 2;
+    group.add(roofArch);
+
+    // Air Traffic Control Tower
+    const ctrlTower = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.4, 11.0, 10), matBase);
+    ctrlTower.position.set(cx + 1.1, 5.5, cz - 1.0);
+    group.add(ctrlTower);
+
+    const ctrlCab = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.45, 0.8, 10), matGlass);
+    ctrlCab.position.set(cx + 1.1, 11.4, cz - 1.0);
+    group.add(ctrlCab);
+
+  } else if (b.type === 9) {
+    // 🌿 에코 파크 (Eco Park Grounds & Trees & Fountain)
+    const treePositions = [
+      [-1.0, -1.0], [1.0, -1.0], [-1.0, 1.0], [1.0, 1.0], [0, -1.1], [0, 1.1]
+    ];
+    treePositions.forEach(([ox, oz]) => {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.8, 6), new THREE.MeshStandardMaterial({ color: 0x553311 }));
+      trunk.position.set(cx + ox, 0.4, cz + oz);
+      group.add(trunk);
+
+      const leaves = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.2, 8), new THREE.MeshStandardMaterial({ color: 0x228833, roughness: 0.6 }));
+      leaves.position.set(cx + ox, 1.2, cz + oz);
+      group.add(leaves);
+    });
+
+    // Central Fountain
+    const basin = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.7, 0.25, 16), new THREE.MeshStandardMaterial({ color: 0x8899aa }));
+    basin.position.set(cx, 0.125, cz);
+    group.add(basin);
+
+    const water = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 0.05, 16), new THREE.MeshBasicMaterial({ color: 0x00c8ff, transparent: true, opacity: 0.8 }));
+    water.position.set(cx, 0.24, cz);
+    group.add(water);
+
+  } else if (b.type === 10) {
+    // 🏥 헬스플러스 병원 (Hospital Tower with Red Cross & Helipad)
+    const H = 16.0;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.5, H, 2.0), new THREE.MeshStandardMaterial({ color: 0xeeeeff, roughness: 0.3 }));
+    body.position.set(cx, H / 2, cz);
+    group.add(body);
+
+    // Red Emergency Cross (+) Logo
+    const redMat = new THREE.MeshBasicMaterial({ color: 0xff0033 });
+    const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.0, 0.06), redMat);
+    crossV.position.set(cx, H - 2.0, cz + 1.02);
+    group.add(crossV);
+    const crossH = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.3, 0.06), redMat);
+    crossH.position.set(cx, H - 2.0, cz + 1.02);
+    group.add(crossH);
+
+    // Rooftop Helipad
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.05, 24), new THREE.MeshBasicMaterial({ color: 0x334455 }));
+    pad.position.set(cx, H + 0.03, cz);
+    group.add(pad);
+
+  } else if (b.type === 11) {
+    // 🎓 네오리아 국립대 (NNU Campus Clock Tower)
+    const mainHall = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.8, 2.0), matBase);
+    mainHall.position.set(cx, 1.4, cz);
+    group.add(mainHall);
+
+    // Historic Clock Tower Spire
+    const clockTower = new THREE.Mesh(new THREE.BoxGeometry(0.9, 12.0, 0.9), matBase);
+    clockTower.position.set(cx, 6.0, cz);
+    group.add(clockTower);
+
+    // Clock Face
+    const clockFace = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.05, 16), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    clockFace.rotation.x = Math.PI / 2;
+    clockFace.position.set(cx, 10.5, cz + 0.46);
+    group.add(clockFace);
+
+    const roofSpire = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.2, 4), new THREE.MeshStandardMaterial({ color: 0x884422 }));
+    roofSpire.position.set(cx, 12.0 + 1.1, cz);
+    roofSpire.rotation.y = Math.PI / 4;
+    group.add(roofSpire);
+
+  } else if (b.type === 12) {
+    // 🏟️ 스포츠 아레나 (Sports Arena Dome Stadium)
+    const stadiumDome = new THREE.Mesh(
+      new THREE.SphereGeometry(1.5, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x334455, metalness: 0.7, roughness: 0.2 })
+    );
+    stadiumDome.position.set(cx, 0.8, cz);
+    stadiumDome.scale.set(1.0, 0.6, 1.0);
+    group.add(stadiumDome);
+
+    // Glowing Stadium Arch Ribbon
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.06, 8, 32, Math.PI), matNeon);
+    arch.position.set(cx, 1.6, cz);
+    group.add(arch);
+
+    // 4 Floodlight Towers
+    [[-1.4, -1.4], [1.4, -1.4], [-1.4, 1.4], [1.4, 1.4]].forEach(([ox, oz]) => {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 3.2, 8), new THREE.MeshStandardMaterial({ color: 0xaaaaaa }));
+      pole.position.set(cx + ox, 1.6, cz + oz);
+      group.add(pole);
+
+      const lightPanel = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.25, 0.1), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+      lightPanel.position.set(cx + ox, 3.2, cz + oz);
+      group.add(lightPanel);
+    });
+  }
+
+  scene.add(group);
+}
+
+// ── BUILD ALL 3D CITY MESHES ──
+function init3DCity() {
+  // Map landmark tile footprints (3x3 grid tiles per interactive building)
+  const landmarkTileMap = {};
+  BLDS.forEach(b => {
+    for (let dy = 0; dy < b.h; dy++) {
+      for (let dx = 0; dx < b.w; dx++) {
+        landmarkTileMap[`${b.tx + dx},${b.ty + dy}`] = b;
+      }
+    }
+  });
+
+  const createdLandmarks = new Set();
 
   for (let y = 0; y < MH; y++) {
     for (let x = 0; x < MW; x++) {
       const t = MAP[y][x];
-      if (t > 0) {
-        const bi = BINFO[t];
-        if (!bi) continue;
+      if (t <= 0) continue;
 
-        const distFromCentre = Math.sqrt((x - MCX) ** 2 + (y - MCY) ** 2);
-        const bh = bHeight(distFromCentre);
-        const H = bh * 8.0;
+      const bi = BINFO[t];
+      if (!bi) continue;
 
-        const geom = getBuildingGeometry(bh);
-        const mat = getBuildingMaterial(t, bi, bh);
-
-        const mesh = new THREE.Mesh(geom, mat);
-        mesh.position.set(x + 0.5, H / 2, y + 0.5);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        scene.add(mesh);
-
-        // ── 지붕 네온 캡 ──
-        const capGeo = new THREE.BoxGeometry(0.96, 0.14, 0.96);
-        const capMat = new THREE.MeshBasicMaterial({ color: neonCol(bi) });
-        const capMesh = new THREE.Mesh(capGeo, capMat);
-        capMesh.position.set(x + 0.5, H + 0.07, y + 0.5);
-        scene.add(capMesh);
-
-        // ── 고층 건물 추가 디테일 ──
-        if (bh >= 4) {
-          // 안테나 (높은 건물에만)
-          const antH = rng(0.8, 2.5);
-          const antGeo = new THREE.CylinderGeometry(0.025, 0.05, antH, 6);
-          const antMat = new THREE.MeshStandardMaterial({ color: 0x444466, metalness: 0.9, roughness: 0.1 });
-          const ant = new THREE.Mesh(antGeo, antMat);
-          ant.position.set(x + 0.5, H + antH / 2 + 0.14, y + 0.5);
-          scene.add(ant);
-          roofAntennaMeshes.push(ant);
-
-          // 안테나 끝 빨간 점멸등
-          const tipMat = new THREE.MeshBasicMaterial({ color: 0xff2200 });
-          const tip = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), tipMat);
-          tip.position.set(x + 0.5, H + antH + 0.14, y + 0.5);
-          tip.userData.blinkPhase = rng(0, Math.PI * 2);
-          scene.add(tip);
-          roofAntennaMeshes.push(tip);
-
-          // 홀로그램 링 (특정 건물)
-          if (bh >= 6 && Math.random() > 0.55) {
-            const ringGeo = new THREE.TorusGeometry(0.55, 0.04, 8, 32);
-            const ringMat = new THREE.MeshBasicMaterial({
-              color: neonCol(bi), transparent: true, opacity: 0.75
-            });
-            const ring = new THREE.Mesh(ringGeo, ringMat);
-            ring.position.set(x + 0.5, H + 0.7, y + 0.5);
-            ring.rotation.x = Math.PI / 2;
-            ring.userData.baseY = H + 0.7;
-            ring.userData.phase = rng(0, Math.PI * 2);
-            scene.add(ring);
-            holoSigns.push(ring);
-
-            // 링 위 두 번째 작은 링
-            const ring2 = new THREE.Mesh(
-              new THREE.TorusGeometry(0.3, 0.025, 6, 24),
-              new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })
-            );
-            ring2.position.set(x + 0.5, H + 1.3, y + 0.5);
-            ring2.rotation.x = Math.PI / 2;
-            ring2.userData.baseY = H + 1.3;
-            ring2.userData.phase = rng(0, Math.PI * 2) + 1;
-            scene.add(ring2);
-            holoSigns.push(ring2);
-          }
-
-          // 중간 층 수평 네온 밴드 (LED 띠)
-          if (bh >= 5) {
-            [0.3, 0.6, 0.85].forEach(frac => {
-              const bandGeo = new THREE.BoxGeometry(0.98, 0.05, 0.98);
-              const bandMat = new THREE.MeshBasicMaterial({
-                color: neonCol(bi), transparent: true, opacity: 0.6
-              });
-              const band = new THREE.Mesh(bandGeo, bandMat);
-              band.position.set(x + 0.5, H * frac, y + 0.5);
-              scene.add(band);
-            });
-          }
+      // Check if this tile is part of a 3x3 Landmark interactive building
+      const landmark = landmarkTileMap[`${x},${y}`];
+      if (landmark) {
+        if (!createdLandmarks.has(landmark.name)) {
+          createdLandmarks.add(landmark.name);
+          createLandmarkBuilding(landmark);
         }
+        continue; // Skip creating individual 1x1 buildings on landmark tiles
       }
+
+      // Height calculation with organic pseudo-random variation
+      const distFromCentre = Math.sqrt((x - MCX) ** 2 + (y - MCY) ** 2);
+      const heightSeed = Math.abs(Math.sin(x * 17.1 + y * 43.3));
+      const heightVar = (heightSeed - 0.5) * 2.2;
+      const bh = Math.max(1.8, Math.min(8.5, bHeight(distFromCentre) + heightVar));
+
+      // Generate varied 1x1 architectural building
+      createStandardBuilding(x, y, t, bi, bh);
     }
   }
 }
@@ -4773,6 +5346,7 @@ updateDashboardData = function() {
 const _origRenderFn = render;
 window._newRenderExtension = function(ts, dt) {
   doExtraInit3D(); // 달, 지하철, 차량 1회 초기화
+  if (currentUsername === 'ree1203') updateWeapons(ts, dt);
   updateNewsTicker(dt);
   updateBGM();
   updateMoon();
@@ -5331,10 +5905,10 @@ function initWorldDetails() {
   const ctH = new THREE.BoxGeometry(2.9, 0.006, 0.04);
   const ctV = new THREE.BoxGeometry(0.04, 0.006, 2.0);
   [-1.1, 0, 1.1].forEach(off => {
-    scene.add(Object.assign(new THREE.Mesh(ctH, whiteMarkM), { position: new THREE.Vector3(sx, 0.011, sz - 3.8 + off) }));
+    const m = new THREE.Mesh(ctH, whiteMarkM); m.position.set(sx, 0.011, sz - 3.8 + off); scene.add(m);
   });
   [-1.45, 0, 1.45].forEach(off => {
-    scene.add(Object.assign(new THREE.Mesh(ctV, whiteMarkM), { position: new THREE.Vector3(sx + off, 0.011, sz - 3.8) }));
+    const m = new THREE.Mesh(ctV, whiteMarkM); m.position.set(sx + off, 0.011, sz - 3.8); scene.add(m);
   });
 
   // 잔디 구역
@@ -10243,6 +10817,7 @@ function hsyTakeMoney() {
   var target = hsySelectedTarget;
   var amount = parseInt(document.getElementById('hsy-money-amount').value) || 0;
   if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (target === 'ree1203') { showNotice('🚫 최고 관리자(ree1203)에게는 제재를 가할 수 없습니다.'); hsyAddLog('차단됨: ree1203 돈 회수 시도', 'err'); return; }
   if (amount <= 0) { showNotice('❌ 금액을 입력하세요.'); return; }
 
   fetch(DB_URL + 'users/' + encodeURIComponent(target) + '.json')
@@ -10298,6 +10873,7 @@ function hsySuspendOneDay() {
   if (!isHsy()) return;
   var target = hsySelectedTarget;
   if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (target === 'ree1203') { showNotice('🚫 최고 관리자(ree1203)에게는 제재를 가할 수 없습니다.'); hsyAddLog('차단됨: ree1203 정지 시도', 'err'); return; }
   if (!confirm(target + '을(를) 1일 정지 처리하시겠습니까?')) return;
 
   var until = Date.now() + 86400000; // 24시간
@@ -10316,6 +10892,7 @@ function hsyChatBan() {
   if (!isHsy()) return;
   var target = hsySelectedTarget;
   if (!target) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (target === 'ree1203') { showNotice('🚫 최고 관리자(ree1203)에게는 제재를 가할 수 없습니다.'); hsyAddLog('차단됨: ree1203 채팅 금지 시도', 'err'); return; }
   if (!confirm(target + '의 채팅을 금지하시겠습니까?')) return;
 
   fetch(DB_URL + 'chatbans/' + encodeURIComponent(target) + '.json', {
@@ -11067,4 +11644,829 @@ setInterval(function() {
   var tab = document.getElementById('admin-tab-owner');
   if (tab && tab.classList.contains('active')) ownerUpdateFPS();
 }, 500);
+
+
+
+// ─────────────────────────────────────────────
+// ree1203 전용 무기 시스템
+// ─────────────────────────────────────────────
+(function(){
+
+const WEAPONS = [
+  { id: 0, name: '소드',   key: '1', color: 0x00ffcc, slotCls: 'ws-active-0', cooldown: 0.8 },
+  { id: 1, name: '플건',   key: '2', color: 0xbf00ff, slotCls: 'ws-active-1', cooldown: 1.2 },
+  { id: 2, name: '방사기', key: '3', color: 0xff5500, slotCls: 'ws-active-2', cooldown: 0.15 },
+];
+
+let weaponGroups = [];    // Three.js groups attached to rightArmGroup
+let activeWeapon = -1;    // 현재 장착 인덱스 (-1=없음)
+let cooldownTimer = 0;    // 현재 무기 쿨타임 잔여
+let swingPhase = 0;       // 소드 스윙 애니메이션 [0~1]
+let isSwinging = false;
+let projectiles = [];     // { mesh, vx, vy, vz, life }
+let fireParticles = [];   // { mesh, vx, vy, vz, life, maxLife }
+let weaponInitialized = false;
+let swordLight, gunLight, flameLight;
+
+function buildSword(THREE) {
+  const g = new THREE.Group();
+
+  // 손잡이
+  const handleGeo = new THREE.CylinderGeometry(0.035, 0.04, 0.45, 8);
+  const handleMat = new THREE.MeshStandardMaterial({ color: 0x1a0a00, roughness: 0.6 });
+  const handle = new THREE.Mesh(handleGeo, handleMat);
+  handle.position.set(0, 0, 0);
+  g.add(handle);
+
+  // 가드 (크로스)
+  const guardGeo = new THREE.BoxGeometry(0.5, 0.055, 0.055);
+  const guardMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.15 });
+  const guard = new THREE.Mesh(guardGeo, guardMat);
+  guard.position.set(0, 0.25, 0);
+  g.add(guard);
+
+  // 블레이드 (에너지 코어)
+  const bladeGeo = new THREE.BoxGeometry(0.07, 1.1, 0.04);
+  const bladeMat = new THREE.MeshStandardMaterial({
+    color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 2.2,
+    transparent: true, opacity: 0.92
+  });
+  const blade = new THREE.Mesh(bladeGeo, bladeMat);
+  blade.position.set(0, 0.85, 0);
+  g.add(blade);
+
+  // 블레이드 외곽 글로우
+  const glowGeo = new THREE.BoxGeometry(0.14, 1.12, 0.07);
+  const glowMat = new THREE.MeshStandardMaterial({
+    color: 0x00ffcc, emissive: 0x00ffcc, emissiveIntensity: 1.0,
+    transparent: true, opacity: 0.25, side: THREE.DoubleSide
+  });
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  glow.position.copy(blade.position);
+  g.add(glow);
+
+  // 조명
+  swordLight = new THREE.PointLight(0x00ffcc, 1.8, 3.5);
+  swordLight.position.set(0, 1.2, 0);
+  g.add(swordLight);
+
+  // 전체 방향: 오른손 위쪽으로
+  g.rotation.z = -0.2;
+  g.position.set(0.1, 0.35, 0.3);
+  return g;
+}
+
+function buildGun(THREE) {
+  const g = new THREE.Group();
+
+  // 총몸
+  const bodyGeo = new THREE.BoxGeometry(0.12, 0.22, 0.55);
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, metalness: 0.8, roughness: 0.3 });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  g.add(body);
+
+  // 배럴
+  const barrelGeo = new THREE.CylinderGeometry(0.025, 0.03, 0.6, 8);
+  const barrelMat = new THREE.MeshStandardMaterial({ color: 0x888899, metalness: 0.95, roughness: 0.1 });
+  const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+  barrel.rotation.x = Math.PI / 2;
+  barrel.position.set(0, 0.04, 0.55);
+  g.add(barrel);
+
+  // 에너지 셀 (보라)
+  const cellGeo = new THREE.BoxGeometry(0.07, 0.32, 0.09);
+  const cellMat = new THREE.MeshStandardMaterial({
+    color: 0xbf00ff, emissive: 0xbf00ff, emissiveIntensity: 2.0,
+    transparent: true, opacity: 0.85
+  });
+  const cell = new THREE.Mesh(cellGeo, cellMat);
+  cell.position.set(0.065, 0, 0.05);
+  g.add(cell);
+
+  // 스코프
+  const scopeGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.28, 6);
+  const scopeMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.7 });
+  const scope = new THREE.Mesh(scopeGeo, scopeMat);
+  scope.rotation.x = Math.PI / 2;
+  scope.position.set(0, 0.13, 0.1);
+  g.add(scope);
+
+  // 조준등
+  gunLight = new THREE.PointLight(0xbf00ff, 1.4, 2.8);
+  gunLight.position.set(0, 0.04, 0.88);
+  g.add(gunLight);
+
+  g.position.set(0.05, 0.05, 0.55);
+  g.rotation.x = 0.08;
+  return g;
+}
+
+function buildFlamethrower(THREE) {
+  const g = new THREE.Group();
+
+  // 연료 탱크
+  const tankGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.55, 10);
+  const tankMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, metalness: 0.7, roughness: 0.4 });
+  const tank = new THREE.Mesh(tankGeo, tankMat);
+  tank.rotation.x = Math.PI / 2;
+  tank.position.set(0, 0, -0.05);
+  g.add(tank);
+
+  // 노즐 배럴
+  const nozzleGeo = new THREE.CylinderGeometry(0.075, 0.04, 0.55, 8);
+  const nozzleMat = new THREE.MeshStandardMaterial({ color: 0x555555, metalness: 0.8 });
+  const nozzle = new THREE.Mesh(nozzleGeo, nozzleMat);
+  nozzle.rotation.x = Math.PI / 2;
+  nozzle.position.set(0, 0, 0.35);
+  g.add(nozzle);
+
+  // 연결 파이프
+  const pipeGeo = new THREE.CylinderGeometry(0.025, 0.025, 0.35, 6);
+  const pipeMat = new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0xff2200, emissiveIntensity: 0.6 });
+  const pipe = new THREE.Mesh(pipeGeo, pipeMat);
+  pipe.rotation.x = Math.PI / 2;
+  pipe.position.set(0.1, -0.08, 0.14);
+  g.add(pipe);
+
+  // 경고 스트라이프
+  const stripeGeo = new THREE.CylinderGeometry(0.112, 0.112, 0.06, 10);
+  const stripeMat = new THREE.MeshStandardMaterial({ color: 0xff8800, emissive: 0xff4400, emissiveIntensity: 0.5 });
+  for (let i = 0; i < 3; i++) {
+    const s = new THREE.Mesh(stripeGeo, stripeMat);
+    s.rotation.x = Math.PI / 2;
+    s.position.set(0, 0, -0.18 + i * 0.18);
+    g.add(s);
+  }
+
+  // 불꽃 조명
+  flameLight = new THREE.PointLight(0xff5500, 0, 4.0);
+  flameLight.position.set(0, 0, 0.9);
+  g.add(flameLight);
+
+  g.position.set(0.05, 0, 0.5);
+  g.rotation.x = 0.06;
+  return g;
+}
+
+function initWeaponSystem() {
+  if (weaponInitialized) return;
+  weaponInitialized = true;
+
+  const THREE = window.THREE;
+  if (!THREE || !rightArmGroup) { console.warn('[Weapon] rightArmGroup 없음'); return; }
+
+  // 3개 무기 그룹 생성 후 숨김
+  weaponGroups[0] = buildSword(THREE);
+  weaponGroups[1] = buildGun(THREE);
+  weaponGroups[2] = buildFlamethrower(THREE);
+  weaponGroups.forEach(wg => { wg.visible = false; rightArmGroup.add(wg); });
+
+  // HUD 표시
+  const hud = document.getElementById('weapon-hud');
+  if (hud) { hud.style.display = 'flex'; }
+  const cross = document.getElementById('weapon-crosshair');
+  if (cross) { cross.style.display = 'block'; }
+
+  // 키 입력 핸들러
+  document.addEventListener('keydown', function(e) {
+    if (currentUsername !== 'ree1203') return;
+    if (e.key === '1') { equipWeapon(0); return; }
+    if (e.key === '2') { equipWeapon(1); return; }
+    if (e.key === '3') { equipWeapon(2); return; }
+    if (e.key === 'f' || e.key === 'F') { attackWeapon(); return; }
+    if (e.key === 'q' || e.key === 'Q') { equipWeapon(-1); return; } // 해제
+  });
+
+  // 마우스 클릭 공격
+  document.addEventListener('mousedown', function(e) {
+    if (currentUsername !== 'ree1203') return;
+    if (e.button === 0 && activeWeapon >= 0) attackWeapon();
+  });
+
+  console.log('[Weapon] ree1203 무기 시스템 초기화 완료');
+}
+
+function equipWeapon(idx) {
+  if (currentUsername !== 'ree1203') return;
+  // 이전 무기 숨김
+  if (activeWeapon >= 0 && weaponGroups[activeWeapon]) weaponGroups[activeWeapon].visible = false;
+
+  // 슬롯 UI 갱신
+  WEAPONS.forEach((w, i) => {
+    const slot = document.getElementById('ws-' + i);
+    if (slot) { slot.classList.remove('ws-active-0', 'ws-active-1', 'ws-active-2'); }
+  });
+
+  if (idx < 0 || idx === activeWeapon) {
+    activeWeapon = -1;
+    return;
+  }
+  activeWeapon = idx;
+  if (weaponGroups[idx]) weaponGroups[idx].visible = true;
+  const slot = document.getElementById('ws-' + idx);
+  if (slot) slot.classList.add(WEAPONS[idx].slotCls);
+}
+
+function attackWeapon() {
+  if (currentUsername !== 'ree1203') return;
+  if (activeWeapon < 0) return;
+  if (cooldownTimer > 0) return;
+
+  const w = WEAPONS[activeWeapon];
+  cooldownTimer = w.cooldown;
+
+  if (activeWeapon === 0) swordSwing();
+  else if (activeWeapon === 1) gunShoot();
+  else if (activeWeapon === 2) flameShoot();
+
+  // 쿨타임 UI 시작
+  const cdEl = document.getElementById('wcd-' + activeWeapon);
+  if (cdEl) { cdEl.style.transform = 'scaleY(1)'; }
+}
+
+function swordSwing() {
+  isSwinging = true;
+  swingPhase = 0;
+}
+
+function gunShoot() {
+  const THREE = window.THREE;
+  if (!THREE || !scene) return;
+  const dirX = Math.sin(cameraYaw);
+  const dirZ = Math.cos(cameraYaw);
+
+  const geoP = new THREE.SphereGeometry(0.055, 6, 6);
+  const matP = new THREE.MeshStandardMaterial({
+    color: 0xbf00ff, emissive: 0xbf00ff, emissiveIntensity: 3.0,
+    transparent: true, opacity: 0.95
+  });
+  const proj = new THREE.Mesh(geoP, matP);
+  proj.position.set(P.x + dirX * 0.8, 1.2, P.y + dirZ * 0.8);
+  scene.add(proj);
+  projectiles.push({ mesh: proj, vx: dirX * 14, vy: 0, vz: dirZ * 14, life: 2.5 });
+
+  // 발사 섬광
+  const flash = new THREE.PointLight(0xbf00ff, 4, 3);
+  flash.position.copy(proj.position);
+  scene.add(flash);
+  setTimeout(() => { scene.remove(flash); }, 100);
+}
+
+function flameShoot() {
+  const THREE = window.THREE;
+  if (!THREE || !scene) return;
+  const dirX = Math.sin(cameraYaw);
+  const dirZ = Math.cos(cameraYaw);
+
+  // 여러 파티클 스폰
+  for (let i = 0; i < 6; i++) {
+    const s = 0.04 + Math.random() * 0.06;
+    const geo = new THREE.SphereGeometry(s, 5, 5);
+    const mat = new THREE.MeshStandardMaterial({
+      color: i < 3 ? 0xff5500 : 0xff9900,
+      emissive: i < 3 ? 0xff2200 : 0xff6600,
+      emissiveIntensity: 2.5,
+      transparent: true, opacity: 0.9
+    });
+    const fp = new THREE.Mesh(geo, mat);
+    const spread = (Math.random() - 0.5) * 0.25;
+    fp.position.set(
+      P.x + dirX * 0.8 + spread * dirZ,
+      1.1 + Math.random() * 0.3,
+      P.y + dirZ * 0.8 + spread * dirX
+    );
+    scene.add(fp);
+    const spd = 5 + Math.random() * 4;
+    fireParticles.push({
+      mesh: fp, mat,
+      vx: dirX * spd + (Math.random() - 0.5) * 2,
+      vy: 1 + Math.random() * 2,
+      vz: dirZ * spd + (Math.random() - 0.5) * 2,
+      life: 0.4 + Math.random() * 0.35,
+      maxLife: 0.75
+    });
+  }
+}
+
+function updateWeapons(ts, dt) {
+  if (currentUsername !== 'ree1203') return;
+  const THREE = window.THREE;
+  if (!THREE) return;
+
+  // 쿨타임
+  if (cooldownTimer > 0) {
+    cooldownTimer = Math.max(0, cooldownTimer - dt);
+    const w = WEAPONS[activeWeapon >= 0 ? activeWeapon : 0];
+    const ratio = activeWeapon >= 0 ? (cooldownTimer / w.cooldown) : 0;
+    const cdEl = document.getElementById('wcd-' + (activeWeapon >= 0 ? activeWeapon : 0));
+    if (cdEl) cdEl.style.transform = `scaleY(${ratio})`;
+  }
+
+  // 소드 스윙 애니메이션
+  if (isSwinging && weaponGroups[0]) {
+    swingPhase = Math.min(1, swingPhase + dt * 3.5);
+    const angle = Math.sin(swingPhase * Math.PI) * 1.4;
+    weaponGroups[0].rotation.x = -angle;
+    if (swingPhase >= 1) {
+      isSwinging = false;
+      weaponGroups[0].rotation.x = 0;
+    }
+  }
+
+  // 소드 빛 깜빡임
+  if (swordLight && activeWeapon === 0) {
+    swordLight.intensity = 1.5 + Math.sin(ts * 8) * 0.3;
+  }
+  // 총 빛 깜빡임
+  if (gunLight && activeWeapon === 1) {
+    gunLight.intensity = 1.2 + Math.sin(ts * 6) * 0.2;
+  }
+
+  // 발사체 이동
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.life -= dt;
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+    p.mesh.rotation.y += dt * 10;
+    if (p.life <= 0) {
+      scene.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      projectiles.splice(i, 1);
+    }
+  }
+
+  // 화염 파티클
+  let flameActive = false;
+  for (let i = fireParticles.length - 1; i >= 0; i--) {
+    const fp = fireParticles[i];
+    fp.life -= dt;
+    fp.mesh.position.x += fp.vx * dt;
+    fp.mesh.position.y += fp.vy * dt;
+    fp.mesh.position.z += fp.vz * dt;
+    fp.vy -= 1.5 * dt; // 중력
+    const ratio = fp.life / fp.maxLife;
+    fp.mat.opacity = ratio * 0.9;
+    fp.mesh.scale.setScalar(0.5 + ratio * 0.5);
+    if (fp.life <= 0) {
+      scene.remove(fp.mesh);
+      fp.mesh.geometry.dispose();
+      fireParticles.splice(i, 1);
+    } else {
+      flameActive = true;
+    }
+  }
+  // 화염방사기 빛
+  if (flameLight) {
+    flameLight.intensity = flameActive ? (1.5 + Math.random() * 2) : 0;
+  }
+}
+
+// 전역 노출
+window.initWeaponSystem = initWeaponSystem;
+window.equipWeapon = equipWeapon;
+window.attackWeapon = attackWeapon;
+window.updateWeapons = updateWeapons;
+
+})();
+
+
+// ─────────────────────────────────────────────
+// R&H Corporation 회사 시스템 (ree1203 + hsy 전용)
+// ─────────────────────────────────────────────
+(function(){
+
+const CO_MEMBERS = ['ree1203', 'hsy'];
+const CO_CEO = 'ree1203';
+const CO_PATH = 'company/';
+
+let coPanelOpen = false;
+let coCurrentTab = 'home';
+let coChatInterval = null;
+let coLastChatTs = 0;
+
+function isCoMember() {
+  return CO_MEMBERS.includes(currentUsername);
+}
+
+function initCompanyPanel() {
+  if (!isCoMember()) return;
+
+  // 버튼 표시
+  const btn = document.getElementById('company-toggle-btn');
+  if (btn) btn.style.display = '';
+
+  // 배지 설정
+  const badge = document.getElementById('company-my-badge');
+  if (badge) {
+    if (currentUsername === CO_CEO) {
+      badge.textContent = '👑 대표이사';
+      badge.style.cssText += 'background:#92400e;color:#fbbf24;';
+    } else {
+      badge.textContent = '💼 부장';
+      badge.style.cssText += 'background:#1e1b4b;color:#c084fc;';
+    }
+  }
+
+  // CEO 전용 UI 표시
+  if (currentUsername === CO_CEO) {
+    const ceoEls = document.querySelectorAll('#co-task-ceo-controls,#co-finance-ceo,#co-notice-ceo');
+    ceoEls.forEach(el => { if(el) el.style.display = ''; });
+  }
+
+  // 채팅 실시간 갱신 시작
+  coChatInterval = setInterval(fetchCoChat, 4000);
+  window.coChatInterval = coChatInterval;
+
+  // 온라인 상태 주기 업데이트
+  setInterval(updateCoOnlineStatus, 10000);
+  updateCoOnlineStatus();
+
+  // 홈 데이터 로드
+  loadCoHome();
+  loadCoTasks();
+  loadCoNotices();
+  loadCoFinanceLog();
+}
+
+function toggleCompanyPanel() {
+  if (!isCoMember()) return;
+  coPanelOpen = !coPanelOpen;
+  const panel = document.getElementById('company-panel');
+  if (!panel) return;
+  panel.style.display = coPanelOpen ? 'block' : 'none';
+  if (coPanelOpen) {
+    switchCoTab(coCurrentTab);
+    loadCoHome();
+    fetchCoChat();
+    loadCoTasks();
+  }
+}
+window.toggleCompanyPanel = toggleCompanyPanel;
+
+function switchCoTab(tab) {
+  coCurrentTab = tab;
+  document.querySelectorAll('.co-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+  document.querySelectorAll('.co-content').forEach(el => {
+    el.classList.remove('active');
+    el.style.display = 'none';
+  });
+  const target = document.getElementById('co-tab-' + tab);
+  if (target) {
+    target.style.display = tab === 'chat' ? 'flex' : 'block';
+    target.classList.add('active');
+  }
+  if (tab === 'chat') { fetchCoChat(); setTimeout(() => scrollCoChat(), 100); }
+  if (tab === 'task') loadCoTasks();
+  if (tab === 'finance') { loadCoFunds(); loadCoFinanceLog(); }
+  if (tab === 'notice') loadCoNotices();
+}
+window.switchCoTab = switchCoTab;
+
+// ─── 온라인 상태 ───
+async function updateCoOnlineStatus() {
+  if (!isCoMember()) return;
+  try {
+    // 내 온라인 마크
+    await fetch(`${DB_URL}${CO_PATH}online/${currentUsername}.json`, {
+      method: 'PUT',
+      body: JSON.stringify(Date.now())
+    });
+    // 멤버 상태 읽기
+    const res = await fetch(`${DB_URL}${CO_PATH}online.json`);
+    const data = res.ok ? await res.json() : {};
+    const now = Date.now();
+    CO_MEMBERS.forEach(m => {
+      const dot = document.getElementById('co-status-' + m);
+      if (!dot) return;
+      const ts = data && data[m];
+      const online = ts && (now - ts) < 30000;
+      dot.style.background = online ? '#22c55e' : '#374151';
+      dot.title = online ? '온라인' : '오프라인';
+    });
+  } catch(e) {}
+}
+
+// ─── 홈 ───
+async function loadCoHome() {
+  loadCoFunds();
+  loadCoActivityLog();
+  loadCoTaskCount();
+}
+
+async function loadCoFunds() {
+  try {
+    const res = await fetch(`${DB_URL}${CO_PATH}funds.json`);
+    const v = res.ok ? await res.json() : 0;
+    const funds = v || 0;
+    const el1 = document.getElementById('co-funds');
+    const el2 = document.getElementById('co-funds-big');
+    if (el1) el1.textContent = '₩' + funds.toLocaleString();
+    if (el2) el2.textContent = '₩' + funds.toLocaleString();
+  } catch(e) {}
+}
+
+async function loadCoActivityLog() {
+  try {
+    const res = await fetch(`${DB_URL}${CO_PATH}activity.json?orderBy="ts"&limitToLast=10`);
+    const data = res.ok ? await res.json() : null;
+    const el = document.getElementById('co-activity-log');
+    if (!el) return;
+    if (!data) { el.textContent = '활동 없음'; return; }
+    const items = Object.values(data).sort((a,b) => b.ts - a.ts);
+    el.innerHTML = items.map(item => {
+      const d = new Date(item.ts);
+      const t = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+      return `<div style="padding:3px 0;border-bottom:1px solid #1e2d40;"><span style="color:#475569;">[${t}]</span> <span style="color:#93c5fd;">${_escapeHtml(item.user)}</span> <span style="color:#64748b;">${_escapeHtml(item.msg)}</span></div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+async function loadCoTaskCount() {
+  try {
+    const res = await fetch(`${DB_URL}${CO_PATH}tasks.json`);
+    const data = res.ok ? await res.json() : null;
+    const el = document.getElementById('co-task-count');
+    if (!el) return;
+    if (!data) { el.textContent = '0건'; return; }
+    const items = Object.values(data);
+    const active = items.filter(t => !t.done).length;
+    el.textContent = active + '건';
+  } catch(e) {}
+}
+
+async function coLogActivity(msg) {
+  try {
+    await fetch(`${DB_URL}${CO_PATH}activity.json`, {
+      method: 'POST',
+      body: JSON.stringify({ user: currentUsername, msg, ts: Date.now() })
+    });
+  } catch(e) {}
+}
+
+// ─── 채팅 ───
+async function fetchCoChat() {
+  if (!isCoMember()) return;
+  try {
+    const url = coLastChatTs > 0
+      ? `${DB_URL}${CO_PATH}chat.json?orderBy="ts"&startAt=${coLastChatTs+1}&limitToLast=30`
+      : `${DB_URL}${CO_PATH}chat.json?orderBy="ts"&limitToLast=30`;
+    const res = await fetch(url);
+    const data = res.ok ? await res.json() : null;
+    if (!data) return;
+    const msgs = Object.values(data).sort((a,b) => a.ts - b.ts);
+    if (!msgs.length) return;
+    const container = document.getElementById('co-chat-messages');
+    if (!container) return;
+    msgs.forEach(m => {
+      const isMine = m.u === currentUsername;
+      const wrap = document.createElement('div');
+      wrap.style.display = 'flex';
+      wrap.style.flexDirection = 'column';
+      wrap.style.alignItems = isMine ? 'flex-end' : 'flex-start';
+      const senderColor = m.u === CO_CEO ? '#fbbf24' : '#c084fc';
+      wrap.innerHTML = `
+        <div class="co-chat-sender" style="color:${senderColor};margin-${isMine?'right':'left'}:4px;">${_escapeHtml(m.u)}</div>
+        <div class="co-chat-bubble ${isMine?'mine':'theirs'}">${_escapeHtml(m.msg)}</div>
+      `;
+      container.appendChild(wrap);
+      coLastChatTs = Math.max(coLastChatTs, m.ts);
+    });
+    scrollCoChat();
+  } catch(e) {}
+}
+
+async function sendCoChat() {
+  if (!isCoMember()) return;
+  const input = document.getElementById('co-chat-input');
+  if (!input) return;
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  try {
+    await fetch(`${DB_URL}${CO_PATH}chat.json`, {
+      method: 'POST',
+      body: JSON.stringify({ u: currentUsername, msg, ts: Date.now() })
+    });
+    fetchCoChat();
+  } catch(e) {}
+}
+window.sendCoChat = sendCoChat;
+
+function scrollCoChat() {
+  const el = document.getElementById('co-chat-messages');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
+// ─── 업무 ───
+async function coAssignTask() {
+  if (currentUsername !== CO_CEO) return;
+  const input = document.getElementById('co-task-input');
+  const priEl = document.getElementById('co-task-priority');
+  if (!input) return;
+  const content = input.value.trim();
+  if (!content) return;
+  input.value = '';
+  const priority = priEl ? priEl.value : 'normal';
+  try {
+    await fetch(`${DB_URL}${CO_PATH}tasks.json`, {
+      method: 'POST',
+      body: JSON.stringify({ content, priority, done: false, ts: Date.now(), by: currentUsername })
+    });
+    coLogActivity(`업무 지시: "${content}"`);
+    loadCoTasks();
+    loadCoHome();
+  } catch(e) {}
+}
+window.coAssignTask = coAssignTask;
+
+async function coCompleteTask(key, el) {
+  try {
+    await fetch(`${DB_URL}${CO_PATH}tasks/${key}.json`, {
+      method: 'PATCH',
+      body: JSON.stringify({ done: true, completedBy: currentUsername, completedAt: Date.now() })
+    });
+    coLogActivity('업무 완료');
+    if (el) el.closest('.co-task-item').classList.add('done');
+    loadCoTasks();
+    loadCoHome();
+  } catch(e) {}
+}
+window.coCompleteTask = coCompleteTask;
+
+async function coDeleteTask(key) {
+  if (currentUsername !== CO_CEO) return;
+  await fetch(`${DB_URL}${CO_PATH}tasks/${key}.json`, { method: 'DELETE' });
+  loadCoTasks();
+  loadCoHome();
+}
+window.coDeleteTask = coDeleteTask;
+
+async function loadCoTasks() {
+  try {
+    const res = await fetch(`${DB_URL}${CO_PATH}tasks.json`);
+    const data = res.ok ? await res.json() : null;
+    const el = document.getElementById('co-task-list');
+    if (!el) return;
+    if (!data) { el.innerHTML = '<div style="color:#475569;font-size:12px;text-align:center;padding:20px;">진행 중인 업무 없음</div>'; return; }
+    const items = Object.entries(data).sort((a,b) => b[1].ts - a[1].ts);
+    const priColors = { urgent: '#ef4444', high: '#f97316', normal: '#3b82f6' };
+    const priLabels = { urgent: '긴급', high: '높음', normal: '보통' };
+    el.innerHTML = items.map(([key, task]) => {
+      const color = priColors[task.priority] || '#3b82f6';
+      const label = priLabels[task.priority] || '보통';
+      const doneStyle = task.done ? 'opacity:0.45;text-decoration:line-through;' : '';
+      const completeBtn = !task.done
+        ? `<button onclick="coCompleteTask('${key}',this)" style="background:#16a34a;border:none;border-radius:6px;color:#fff;padding:4px 8px;font-size:10px;cursor:pointer;margin-left:auto;">완료</button>`
+        : `<span style="font-size:10px;color:#22c55e;">✓ 완료</span>`;
+      const deleteBtn = currentUsername === CO_CEO
+        ? `<button onclick="coDeleteTask('${key}')" style="background:#7f1d1d;border:none;border-radius:6px;color:#fca5a5;padding:4px 6px;font-size:10px;cursor:pointer;">🗑</button>`
+        : '';
+      return `
+        <div class="co-task-item ${task.done?'done':''}">
+          <div class="co-task-priority-dot" style="background:${color};" title="${label}"></div>
+          <div style="flex:1;${doneStyle}">
+            <div style="font-size:12px;color:#cce4ff;">${_escapeHtml(task.content)}</div>
+            <div style="font-size:10px;color:#475569;margin-top:2px;">지시자: ${_escapeHtml(task.by||'?')} · <span style="color:${color};">${label}</span></div>
+          </div>
+          ${completeBtn}
+          ${deleteBtn}
+        </div>
+      `;
+    }).join('');
+  } catch(e) {}
+}
+
+// ─── 재무 ───
+async function coDeposit() {
+  if (currentUsername !== CO_CEO) return;
+  const input = document.getElementById('co-deposit-amount');
+  const amount = parseInt(input.value);
+  if (!amount || amount <= 0) return;
+  input.value = '';
+  try {
+    const res = await fetch(`${DB_URL}${CO_PATH}funds.json`);
+    const cur = (res.ok ? await res.json() : 0) || 0;
+    await fetch(`${DB_URL}${CO_PATH}funds.json`, { method: 'PUT', body: JSON.stringify(cur + amount) });
+    await fetch(`${DB_URL}${CO_PATH}finance_log.json`, {
+      method: 'POST',
+      body: JSON.stringify({ type: '입금', amount, user: currentUsername, ts: Date.now() })
+    });
+    coLogActivity(`회사 자금 입금 ₩${amount.toLocaleString()}`);
+    loadCoFunds();
+    loadCoFinanceLog();
+    showNotice(`🏢 회사 자금 ₩${amount.toLocaleString()} 입금 완료`);
+  } catch(e) {}
+}
+window.coDeposit = coDeposit;
+
+async function coPaySalary() {
+  if (currentUsername !== CO_CEO) return;
+  const input = document.getElementById('co-salary-amount');
+  const amount = parseInt(input.value);
+  if (!amount || amount <= 0) return;
+  input.value = '';
+  try {
+    // 회사 자금 차감
+    const res = await fetch(`${DB_URL}${CO_PATH}funds.json`);
+    const cur = (res.ok ? await res.json() : 0) || 0;
+    if (cur < amount) { showNotice('⚠️ 회사 자금이 부족합니다.'); return; }
+    await fetch(`${DB_URL}${CO_PATH}funds.json`, { method: 'PUT', body: JSON.stringify(cur - amount) });
+    // hsy 개인 자금 지급
+    const uRes = await fetch(`${DB_URL}users/hsy.json`);
+    const uData = uRes.ok ? await uRes.json() : {};
+    const hMoney = ((uData && uData.money) || 0) + amount;
+    await fetch(`${DB_URL}users/hsy/money.json`, { method: 'PUT', body: JSON.stringify(hMoney) });
+    // 로그
+    await fetch(`${DB_URL}${CO_PATH}finance_log.json`, {
+      method: 'POST',
+      body: JSON.stringify({ type: '급여지급', amount, user: 'hsy', ts: Date.now() })
+    });
+    coLogActivity(`hsy에게 급여 ₩${amount.toLocaleString()} 지급`);
+    loadCoFunds();
+    loadCoFinanceLog();
+    showNotice(`💸 hsy에게 급여 ₩${amount.toLocaleString()} 지급 완료`);
+  } catch(e) { showNotice('오류: 급여 지급 실패'); }
+}
+window.coPaySalary = coPaySalary;
+
+async function loadCoFinanceLog() {
+  try {
+    const res = await fetch(`${DB_URL}${CO_PATH}finance_log.json?orderBy="ts"&limitToLast=15`);
+    const data = res.ok ? await res.json() : null;
+    const el = document.getElementById('co-finance-log');
+    if (!el) return;
+    if (!data) { el.textContent = '내역 없음'; return; }
+    const items = Object.values(data).sort((a,b) => b.ts - a.ts);
+    const typeColors = { '입금': '#22c55e', '급여지급': '#f59e0b', '출금': '#ef4444' };
+    el.innerHTML = items.map(item => {
+      const d = new Date(item.ts);
+      const t = `${d.getMonth()+1}/${d.getDate()} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+      const color = typeColors[item.type] || '#60a5fa';
+      return `<div class="co-finance-row"><span style="color:${color};">${_escapeHtml(item.type)}</span><span style="color:#93c5fd;">₩${(item.amount||0).toLocaleString()}</span><span style="color:#475569;">${_escapeHtml(item.user||'')} · ${t}</span></div>`;
+    }).join('');
+  } catch(e) {}
+}
+
+// ─── 공지 ───
+async function coPostNotice() {
+  if (currentUsername !== CO_CEO) return;
+  const input = document.getElementById('co-notice-input');
+  if (!input) return;
+  const content = input.value.trim();
+  if (!content) return;
+  input.value = '';
+  try {
+    await fetch(`${DB_URL}${CO_PATH}notices.json`, {
+      method: 'POST',
+      body: JSON.stringify({ content, by: currentUsername, ts: Date.now() })
+    });
+    coLogActivity('공지 등록');
+    loadCoNotices();
+    showNotice('📢 공지가 등록되었습니다.');
+  } catch(e) {}
+}
+window.coPostNotice = coPostNotice;
+
+async function coDeleteNotice(key) {
+  if (currentUsername !== CO_CEO) return;
+  await fetch(`${DB_URL}${CO_PATH}notices/${key}.json`, { method: 'DELETE' });
+  loadCoNotices();
+}
+window.coDeleteNotice = coDeleteNotice;
+
+async function loadCoNotices() {
+  try {
+    const res = await fetch(`${DB_URL}${CO_PATH}notices.json?orderBy="ts"&limitToLast=20`);
+    const data = res.ok ? await res.json() : null;
+    const el = document.getElementById('co-notice-list');
+    if (!el) return;
+    if (!data) { el.innerHTML = '<div style="color:#475569;font-size:12px;text-align:center;padding:20px;">공지 없음</div>'; return; }
+    const items = Object.entries(data).sort((a,b) => b[1].ts - a[1].ts);
+    el.innerHTML = items.map(([key, notice]) => {
+      const d = new Date(notice.ts);
+      const t = `${d.getFullYear()}.${(d.getMonth()+1).toString().padStart(2,'0')}.${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+      const delBtn = currentUsername === CO_CEO
+        ? `<button onclick="coDeleteNotice('${key}')" style="background:none;border:none;color:#475569;font-size:12px;cursor:pointer;margin-left:8px;" title="삭제">✕</button>`
+        : '';
+      return `
+        <div class="co-notice-card">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+            <div style="font-size:12px;color:#cce4ff;line-height:1.5;flex:1;">${_escapeHtml(notice.content)}</div>
+            ${delBtn}
+          </div>
+          <div style="font-size:10px;color:#475569;margin-top:6px;">👑 ${_escapeHtml(notice.by||'?')} · ${t}</div>
+        </div>
+      `;
+    }).join('');
+  } catch(e) {}
+}
+
+// 전역 노출
+window.initCompanyPanel = initCompanyPanel;
+
+})();
 
