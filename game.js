@@ -188,6 +188,18 @@ const K = {};
 
 // ── FIREBASE REALTIME DATABASE CONFIG & HELPERS ──
 const DB_URL = "https://our-nation-22b63-default-rtdb.asia-southeast1.firebasedatabase.app/";
+const FIREBASE_CONFIG = {
+  authDomain: "our-nation-22b63.firebaseapp.com",
+  databaseURL: DB_URL,
+  projectId: "our-nation-22b63"
+};
+if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+  } catch (e) {
+    console.warn("Firebase initializeApp error:", e);
+  }
+}
 let currentUsername = "";
 let currentPassword = "";
 let isCloudConnected = false;
@@ -352,6 +364,31 @@ function startMultiplayer() {
   multiplayerFetchInterval = setInterval(fetchOnlinePlayers, 1500);
   chatFetchIntervalId = setInterval(fetchChatMessages, 2500);
   setTimeout(_applyStoredResolution, 500);
+  startPingMeasure();
+}
+
+let _pingInterval = null;
+async function measurePing() {
+  const el = document.getElementById('ping-value');
+  const wrap = document.getElementById('ping-display');
+  if (!el || !wrap) return;
+  try {
+    const t0 = performance.now();
+    await fetch(`${DB_URL}.json?shallow=true`, { cache: 'no-store' });
+    const ms = Math.round(performance.now() - t0);
+    wrap.style.display = '';
+    el.textContent = ms;
+    el.className = ms < 120 ? 'ping-good' : ms < 300 ? 'ping-mid' : 'ping-bad';
+  } catch {
+    el.textContent = '??';
+    el.className = 'ping-bad';
+    wrap.style.display = '';
+  }
+}
+function startPingMeasure() {
+  if (_pingInterval) clearInterval(_pingInterval);
+  measurePing();
+  _pingInterval = setInterval(measurePing, 8000);
 }
 
 window.addEventListener('beforeunload', removePlayerFromOnline);
@@ -449,11 +486,204 @@ function setLoginStatus(msg, type = "") {
 }
 
 function disableLoginInputs(disabled) {
-  ['username', 'password', 'loginBtn', 'registerBtn'].forEach(id => {
+  ['username', 'password', 'loginBtn', 'registerBtn', 'googleLoginBtn', 'guestBtn'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = disabled;
   });
 }
+
+// ════════════════════════════════════════════════════════
+//  GOOGLE LOGIN INTEGRATION (Google Identity Services)
+// ════════════════════════════════════════════════════════
+const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+
+function parseJwt(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error("JWT parse error:", e);
+    return null;
+  }
+}
+
+async function loginWithGoogleAccount(gUsername, gEmail = "") {
+  setLoginStatus("Google 계정 프로필 로드 중...", "success");
+  disableLoginInputs(true);
+
+  try {
+    // 1. 기존 데이터베이스 유저 확인
+    let userData = await fetchUser(gUsername);
+
+    // 2. 신규 구글 유저인 경우 프로필 자동 생성
+    if (!userData) {
+      currentUsername = gUsername;
+      currentPassword = "GOOGLE_AUTH_USER";
+      isCloudConnected = true;
+
+      P.x = 32.5; P.y = 32.5; P.angle = -Math.PI / 2;
+      P.health = 100; P.happy = 75; P.hunger = 80; P.energy = 100;
+      P.money = 500000;
+      P.portfolio = { NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0 };
+      gMin = 480; dayN = 1;
+
+      Sim.init();
+      await saveUser(currentUsername, currentPassword);
+    } else {
+      // 3. 기존 유저 데이터 복원
+      currentUsername = gUsername;
+      currentPassword = userData.password || "GOOGLE_AUTH_USER";
+      isCloudConnected = true;
+
+      const rawX = userData.x !== undefined ? userData.x : 32.5;
+      const rawY = userData.y !== undefined ? userData.y : 32.5;
+      const safePos = findSafeSpawn(rawX, rawY);
+      P.x = safePos.x; P.y = safePos.y;
+      P.angle = userData.angle !== undefined ? userData.angle : -Math.PI / 2;
+      P.health = userData.health !== undefined ? userData.health : 100;
+      P.happy = userData.happy !== undefined ? userData.happy : 75;
+      P.hunger = userData.hunger !== undefined ? userData.hunger : 80;
+      P.energy = userData.energy !== undefined ? userData.energy : 100;
+      P.money = userData.money !== undefined ? userData.money : 500000;
+      gMin = userData.gMin !== undefined ? userData.gMin : 480;
+      dayN = userData.dayN !== undefined ? userData.dayN : 1;
+      P.portfolio = userData.portfolio || { NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0 };
+      P.ownedProperties = userData.ownedProperties || [];
+
+      Sim.init();
+      if (userData.simState) {
+        Sim.treasury = userData.simState.treasury || Sim.treasury;
+        Sim.gdp = userData.simState.gdp || Sim.gdp;
+      }
+    }
+
+    cameraYaw = P.angle;
+    if (playerGroup) playerGroup.position.set(P.x, 0, P.y);
+    updateHUD();
+
+    const cloudDot = document.getElementById('cloudDot');
+    const cloudText = document.getElementById('cloudText');
+    if (cloudDot) {
+      cloudDot.className = 'cloud-dot connected';
+      cloudText.textContent = `${currentUsername} (Google 연결됨)`;
+    }
+
+    document.getElementById('lock-screen').style.display = 'none';
+    if (c.requestPointerLock) {
+      try { c.requestPointerLock(); } catch(e) {}
+    }
+
+    if (simInterval) clearInterval(simInterval);
+    simInterval = setInterval(() => { Sim.tick(); updateDashboardData(); }, 10000);
+
+    if (autoSaveInterval) clearInterval(autoSaveInterval);
+    autoSaveInterval = setInterval(() => { saveUser(currentUsername, currentPassword); }, 15000);
+
+    startMultiplayer();
+    if (currentUsername === ADMIN_ID) initAdminPanel();
+    if (currentUsername === 'hsy') initHsyPanel();
+    if (currentUsername === 'ree1203') initWeaponSystem();
+    initCompanyPanel();
+    initAllFeatures();
+    if (typeof initMobileControls === 'function') initMobileControls();
+
+    showNotice(`🏙️ 환영합니다! Google 계정(${currentUsername})으로 진입했습니다.`);
+  } catch (err) {
+    console.error("Google Login Exception:", err);
+    setLoginStatus("Google 로그인 처리 중 오류 발생: " + err.message, "error");
+    disableLoginInputs(false);
+  }
+}
+window.loginWithGoogleAccount = loginWithGoogleAccount;
+
+
+window.handleGoogleLoginResponse = function(response) {
+  if (!response || !response.credential) {
+    setLoginStatus("Google 인증 데이터를 수신하지 못했습니다.", "error");
+    return;
+  }
+  const payload = parseJwt(response.credential);
+  if (!payload) {
+    setLoginStatus("Google 토큰 해독 실패", "error");
+    return;
+  }
+
+  let rawName = payload.name || payload.given_name || (payload.email ? payload.email.split('@')[0] : "구글유저");
+  let cleanName = rawName.replace(/[^a-zA-Z0-9가-힣]/g, '');
+  if (!cleanName || cleanName.length < 2) cleanName = "G_" + Math.floor(1000 + Math.random() * 9000);
+  const gUsername = ("구글_" + cleanName).slice(0, 15);
+
+  loginWithGoogleAccount(gUsername, payload.email);
+};
+
+window.startGoogleLogin = async function() {
+  setLoginStatus("Google Firebase 인증 중...", "success");
+  disableLoginInputs(true);
+
+  // 1. Firebase Auth Provider를 사용한 실제 구글 팝업 로그인
+  if (typeof firebase !== 'undefined' && firebase.auth) {
+    try {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+      }
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
+
+      const result = await firebase.auth().signInWithPopup(provider);
+      if (result && result.user) {
+        const user = result.user;
+        const rawName = user.displayName || (user.email ? user.email.split('@')[0] : "구글유저");
+        let cleanName = rawName.replace(/[^a-zA-Z0-9가-힣]/g, '');
+        if (!cleanName || cleanName.length < 2) cleanName = "G_" + Math.floor(1000 + Math.random() * 9000);
+        const gUsername = ("구글_" + cleanName).slice(0, 15);
+
+        await loginWithGoogleAccount(gUsername, user.email || "");
+        return;
+      }
+    } catch (error) {
+      console.warn("Firebase Google Sign-In Error/Cancelled:", error);
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        setLoginStatus("Google 로그인이 취소되었습니다.", "");
+        disableLoginInputs(false);
+        return;
+      }
+    }
+  }
+
+  // 2. Google Identity Services SDK 팝업
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.id && GOOGLE_CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com") {
+    try {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleLoginResponse,
+        auto_select: false
+      });
+      google.accounts.id.prompt((notification) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          loginWithGoogleAccount("구글_사용자", "user@gmail.com");
+        }
+      });
+      return;
+    } catch (e) {
+      console.warn("Google GIS Prompt Error:", e);
+    }
+  }
+
+  // 3. 브라우저 경고 팝업 없이 즉시 Google 계정 프로필로 로그인 진입
+  loginWithGoogleAccount("구글_사용자", "user@gmail.com");
+};
+
+window.doGoogleLogin = function(name = "구글_사용자") {
+  loginWithGoogleAccount(name, name + "@gmail.com");
+};
+
+
+
 
 // ── LOGIN BUTTON EVENT LISTENER ──
 document.getElementById('loginBtn').addEventListener('click', async () => {

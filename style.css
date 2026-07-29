@@ -624,6 +624,48 @@ body {
   transform: translateY(-1px);
 }
 
+/* ── DIVIDER & GOOGLE LOGIN BUTTON ── */
+.divider-row {
+  display: flex;
+  align-items: center;
+  margin: 6px 0 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.divider-row::before,
+.divider-row::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.divider-row span {
+  padding: 0 10px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  transition: all var(--transition);
+}
+.google-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+.google-icon {
+  flex-shrink: 0;
+}
+
+
 .status-msg {
   font-size: 11px;
   color: var(--text-dim);
@@ -670,6 +712,14 @@ body {
   from { opacity: 0.4; }
   to { opacity: 1; }
 }
+
+#ping-display {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+#ping-value.ping-good  { color: #00e676; text-shadow: 0 0 6px #00e676; }
+#ping-value.ping-mid   { color: #ffb030; text-shadow: 0 0 6px #ffb030; }
+#ping-value.ping-bad   { color: #ff4560; text-shadow: 0 0 6px #ff4560; }
 
 .controls {
   display: grid;
