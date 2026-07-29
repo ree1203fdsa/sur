@@ -685,7 +685,10 @@ window.startGoogleLogin = async function() {
         disableLoginInputs(false);
         return;
       }
-      if (error.code !== 'auth/operation-not-supported-in-this-environment') {
+      if (error.code === 'auth/unauthorized-domain') {
+        console.warn("Firebase Auth Unauthorized Domain:", location.hostname);
+        // Fallback to GIS Token Client below or prompt guide
+      } else if (error.code !== 'auth/operation-not-supported-in-this-environment') {
         setLoginStatus("Google 로그인 오류: " + (error.message || error.code), "error");
         disableLoginInputs(false);
         return;
