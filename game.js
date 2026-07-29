@@ -189,19 +189,27 @@ const K = {};
 // ── FIREBASE REALTIME DATABASE CONFIG & HELPERS ──
 const DB_URL = "https://our-nation-22b63-default-rtdb.asia-southeast1.firebasedatabase.app/";
 const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDisx3nprEfnTvp75xPO9cyBo5x39O6H2k",
   authDomain: "our-nation-22b63.firebaseapp.com",
   databaseURL: DB_URL,
-  projectId: "our-nation-22b63"
+  projectId: "our-nation-22b63",
+  storageBucket: "our-nation-22b63.firebasestorage.app",
+  messagingSenderId: "326856301939",
+  appId: "1:326856301939:web:456460193c219b02143906",
+  measurementId: "G-51EN6TXM5L"
 };
-if (typeof firebase !== 'undefined' && firebase.apps && !firebase.apps.length) {
+if (typeof firebase !== 'undefined' && firebase.apps) {
   try {
-    firebase.initializeApp(FIREBASE_CONFIG);
+    if (!firebase.apps.length) {
+      firebase.initializeApp(FIREBASE_CONFIG);
+    }
   } catch (e) {
     console.warn("Firebase initializeApp error:", e);
   }
 }
 let currentUsername = "";
 let currentPassword = "";
+let currentUserEmail = "";
 let isCloudConnected = false;
 let autoSaveInterval = null;
 
@@ -399,23 +407,44 @@ let weatherDuration = 480;  // remaining game-minutes in current state
 let cloudiness = 0.0;
 let fogIntensity = 0.0;
 
-async function fetchUser(username) {
+async function fetchUser(usernameOrEmail) {
   try {
-    const res = await fetch(`${DB_URL}users/${encodeURIComponent(username)}.json`);
+    const res = await fetch(`${DB_URL}users/${encodeURIComponent(usernameOrEmail)}.json`);
     if (res.status === 401) {
       throw new Error("PERMISSION_DENIED");
     }
-    if (!res.ok) {
-      throw new Error("HTTP_ERROR_" + res.status);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data === 'object') {
+        return { username: usernameOrEmail, data };
+      }
     }
-    return await res.json();
+
+    if (usernameOrEmail.includes('@')) {
+      const allRes = await fetch(`${DB_URL}users.json?shallow=false`);
+      if (allRes.ok) {
+        const allUsers = await allRes.json();
+        if (allUsers) {
+          for (const [uKey, uData] of Object.entries(allUsers)) {
+            if (uData && typeof uData === 'object') {
+              if (uKey.toLowerCase() === usernameOrEmail.toLowerCase() || 
+                  (uData.email && uData.email.toLowerCase() === usernameOrEmail.toLowerCase())) {
+                return { username: uKey, data: uData };
+              }
+            }
+          }
+        }
+      }
+    }
+
+    return null;
   } catch (err) {
     console.error("Firebase fetch error:", err);
     throw err;
   }
 }
 
-async function saveUser(username, password) {
+async function saveUser(username, password, email = "") {
   if (!username) return;
   const cloudDot = document.getElementById('cloudDot');
   const cloudText = document.getElementById('cloudText');
@@ -427,6 +456,7 @@ async function saveUser(username, password) {
 
   const payload = {
     password: password,
+    email: email || currentUserEmail || "",
     x: P.x,
     y: P.y,
     angle: P.angle,
@@ -495,7 +525,7 @@ function disableLoginInputs(disabled) {
 // ════════════════════════════════════════════════════════
 //  GOOGLE LOGIN INTEGRATION (Google Identity Services)
 // ════════════════════════════════════════════════════════
-const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_CLIENT_ID = "326856301939.apps.googleusercontent.com";
 
 function parseJwt(token) {
   try {
@@ -621,11 +651,13 @@ window.handleGoogleLoginResponse = function(response) {
 };
 
 window.startGoogleLogin = async function() {
-  setLoginStatus("Google Firebase 인증 중...", "success");
+  setLoginStatus("Google 계정 로그인 창 요청 중...", "success");
   disableLoginInputs(true);
 
-  // 1. Firebase Auth Provider를 사용한 실제 구글 팝업 로그인
-  if (typeof firebase !== 'undefined' && firebase.auth) {
+  const isFileProtocol = location.protocol === 'file:';
+
+  // 1. Firebase Auth Provider (HTTP/HTTPS 환경)
+  if (!isFileProtocol && typeof firebase !== 'undefined' && firebase.auth) {
     try {
       if (!firebase.apps.length) {
         firebase.initializeApp(FIREBASE_CONFIG);
@@ -633,6 +665,7 @@ window.startGoogleLogin = async function() {
       const provider = new firebase.auth.GoogleAuthProvider();
       provider.addScope('email');
       provider.addScope('profile');
+      provider.setCustomParameters({ prompt: 'select_account' });
 
       const result = await firebase.auth().signInWithPopup(provider);
       if (result && result.user) {
@@ -652,30 +685,64 @@ window.startGoogleLogin = async function() {
         disableLoginInputs(false);
         return;
       }
+      if (error.code !== 'auth/operation-not-supported-in-this-environment') {
+        setLoginStatus("Google 로그인 오류: " + (error.message || error.code), "error");
+        disableLoginInputs(false);
+        return;
+      }
     }
   }
 
-  // 2. Google Identity Services SDK 팝업
-  if (typeof google !== 'undefined' && google.accounts && google.accounts.id && GOOGLE_CLIENT_ID !== "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com") {
+  // 2. Google Identity Services (GIS) Token Client
+  let activeClientId = localStorage.getItem('custom_google_client_id') || GOOGLE_CLIENT_ID;
+  if (typeof google !== 'undefined' && google.accounts && google.accounts.oauth2 && activeClientId.includes('-')) {
     try {
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleLoginResponse,
-        auto_select: false
-      });
-      google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          loginWithGoogleAccount("구글_사용자", "user@gmail.com");
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: activeClientId,
+        scope: 'email profile openid',
+        callback: async (tokenResponse) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            setLoginStatus("Google 계정 프로필 수신 중...", "success");
+            try {
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+              });
+              const profile = await res.json();
+              if (profile && profile.email) {
+                const rawName = profile.name || profile.given_name || profile.email.split('@')[0];
+                let cleanName = rawName.replace(/[^a-zA-Z0-9가-힣]/g, '');
+                if (!cleanName || cleanName.length < 2) cleanName = "G_" + Math.floor(1000 + Math.random() * 9000);
+                const gUsername = ("구글_" + cleanName).slice(0, 15);
+                await loginWithGoogleAccount(gUsername, profile.email);
+                return;
+              }
+            } catch (err) {
+              console.error("Google userinfo fetch error:", err);
+            }
+          }
+          setLoginStatus("Google 인증에 실패했습니다.", "error");
+          disableLoginInputs(false);
+        },
+        error_callback: (err) => {
+          console.warn("Google OAuth Error:", err);
+          setLoginStatus("Google 로그인 창이 닫혔거나 취소되었습니다.", "error");
+          disableLoginInputs(false);
         }
       });
+
+      tokenClient.requestAccessToken();
       return;
     } catch (e) {
-      console.warn("Google GIS Prompt Error:", e);
+      console.warn("Google OAuth2 Token Client Init Error:", e);
     }
   }
 
-  // 3. 브라우저 경고 팝업 없이 즉시 Google 계정 프로필로 로그인 진입
-  loginWithGoogleAccount("구글_사용자", "user@gmail.com");
+  if (isFileProtocol) {
+    setLoginStatus("로컬 파일(file://) 환경에서는 웹 서버(http://) 접속 시 구글 팝업 로그인이 지원됩니다. 아이디/이메일 로그인을 이용해 주세요.", "error");
+  } else {
+    setLoginStatus("Google 인증 모듈을 로드하지 못했습니다.", "error");
+  }
+  disableLoginInputs(false);
 };
 
 window.doGoogleLogin = function(name = "구글_사용자") {
@@ -691,38 +758,51 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   const pInput = document.getElementById('password').value.trim();
   
   if (!uInput || !pInput) {
-    setLoginStatus("아이디와 비밀번호를 모두 입력해 주세요.", "error");
+    setLoginStatus("아이디/이메일과 비밀번호를 모두 입력해 주세요.", "error");
     return;
   }
   
-  // Supports Korean characters (Hangul), English, numbers, and underscores (2-15 characters)
-  const usernameRegex = /^[a-zA-Z0-9가-힣_]{2,15}$/;
-  if (!usernameRegex.test(uInput)) {
-    setLoginStatus("아이디는 2~15자의 한글, 영문, 숫자, _만 가능합니다.", "error");
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const usernameRegex = /^[a-zA-Z0-9가-힣_]{2,40}$/;
+  if (!emailRegex.test(uInput) && !usernameRegex.test(uInput)) {
+    setLoginStatus("올바른 아이디 또는 이메일 형식을 입력해 주세요.", "error");
     return;
   }
 
   setLoginStatus("데이터베이스 연결 중...", "");
   disableLoginInputs(true);
 
+  // Firebase Auth Email 로그인 시도
+  if (emailRegex.test(uInput) && typeof firebase !== 'undefined' && firebase.auth) {
+    try {
+      await firebase.auth().signInWithEmailAndPassword(uInput, pInput);
+      console.log("Firebase Auth Email 로그인 성공");
+    } catch (authErr) {
+      console.warn("Firebase Auth Email 로그인 참고:", authErr.message);
+    }
+  }
+
   try {
-    const userData = await fetchUser(uInput);
+    const userRecord = await fetchUser(uInput);
     
-    if (!userData) {
-      setLoginStatus("존재하지 않는 아이디입니다.", "error");
+    if (!userRecord || !userRecord.data) {
+      setLoginStatus("존재하지 않는 아이디 또는 이메일입니다.", "error");
       disableLoginInputs(false);
       return;
     }
 
-    if (userData.password !== pInput) {
+    const { username: foundUsername, data: userData } = userRecord;
+
+    if (userData.password && userData.password !== pInput) {
       setLoginStatus("비밀번호가 일치하지 않습니다.", "error");
       disableLoginInputs(false);
       return;
     }
 
-    // Success login
-    currentUsername = uInput;
+    // 로그인 성공
+    currentUsername = foundUsername;
     currentPassword = pInput;
+    currentUserEmail = emailRegex.test(uInput) ? uInput : (userData.email || "");
     isCloudConnected = true;
 
     // Load progress
@@ -770,7 +850,9 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
     // Start game
     document.getElementById('lock-screen').style.display = 'none';
-    c.requestPointerLock();
+    if (c.requestPointerLock) {
+      try { c.requestPointerLock(); } catch(e) {}
+    }
     
     if (simInterval) clearInterval(simInterval);
     simInterval = setInterval(() => {
@@ -797,7 +879,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     // 채팅 전체 삭제 버튼은 ree1203만 표시
     const _chatClearBtn = document.getElementById('chat-clear-all-btn');
     if (_chatClearBtn) _chatClearBtn.style.display = currentUsername === 'ree1203' ? '' : 'none';
-    showNotice(`🏙️ 환영합니다, ${currentUsername}님! 저장 데이터가 로드되었습니다.`);
+    showNotice(`🏙️ 환영합니다, ${currentUsername}님! 로그인되었습니다.`);
   } catch (err) {
     if (err.message === "PERMISSION_DENIED") {
       setLoginStatus("접근 권한이 없습니다. Firebase 규칙(.read/.write)을 true로 설정해 주세요.", "error");
@@ -810,20 +892,21 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
 // ── REGISTER BUTTON EVENT LISTENER ──
 document.getElementById('registerBtn').addEventListener('click', async () => {
-  setLoginStatus("현재 회원가입이 비활성화되어 있습니다. 지정된 계정으로 로그인해 주세요.", "error");
-  return;
-  
   const uInput = document.getElementById('username').value.trim();
   const pInput = document.getElementById('password').value.trim();
   
   if (!uInput || !pInput) {
-    setLoginStatus("아이디와 비밀번호를 모두 입력해 주세요.", "error");
+    setLoginStatus("아이디/이메일과 비밀번호를 모두 입력해 주세요.", "error");
     return;
   }
 
-  const usernameRegex = /^[a-zA-Z0-9_]{3,15}$/;
-  if (!usernameRegex.test(uInput)) {
-    setLoginStatus("아이디는 3~15자의 영문, 숫자, _만 가능합니다.", "error");
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const usernameRegex = /^[a-zA-Z0-9가-힣_]{2,20}$/;
+  const isEmail = emailRegex.test(uInput);
+  const isUsername = usernameRegex.test(uInput);
+
+  if (!isEmail && !isUsername) {
+    setLoginStatus("아이디(2~20자) 또는 이메일 형식을 입력해 주세요.", "error");
     return;
   }
   
@@ -832,69 +915,64 @@ document.getElementById('registerBtn').addEventListener('click', async () => {
     return;
   }
 
-  setLoginStatus("아이디 중복 검사 중...", "");
+  setLoginStatus("중복 검사 및 계정 생성 중...", "");
   disableLoginInputs(true);
 
-  const userData = await fetchUser(uInput);
-  
-  if (userData) {
-    setLoginStatus("이미 존재하는 아이디입니다.", "error");
+  let targetUsername = uInput;
+  let targetEmail = "";
+  if (isEmail) {
+    targetEmail = uInput;
+    const prefix = uInput.split('@')[0].replace(/[^a-zA-Z0-9가-힣_]/g, '');
+    targetUsername = (prefix.length >= 2 ? prefix : "유저_" + Math.floor(1000 + Math.random() * 9000)).slice(0, 15);
+  }
+
+  // Firebase Auth Email Signup
+  if (isEmail && typeof firebase !== 'undefined' && firebase.auth) {
+    try {
+      await firebase.auth().createUserWithEmailAndPassword(uInput, pInput);
+      console.log("Firebase Auth Email 가입 성공");
+    } catch (authErr) {
+      console.warn("Firebase Auth Email 가입 참고:", authErr.message);
+    }
+  }
+
+  const existingRecord = await fetchUser(uInput);
+  if (existingRecord) {
+    setLoginStatus("이미 존재하거나 가입된 아이디/이메일입니다.", "error");
     disableLoginInputs(false);
     return;
   }
 
-  setLoginStatus("프로필 생성 중...", "success");
+  setLoginStatus("새 계정 프로필 생성 중...", "success");
 
-  // Success register, create new account with default starting stats
-  currentUsername = uInput;
+  currentUsername = targetUsername;
   currentPassword = pInput;
+  currentUserEmail = targetEmail;
   isCloudConnected = true;
 
-  // Initialize defaults
-  P.x = 32.5;
-  P.y = 32.5;
-  P.angle = -Math.PI / 2;
-  P.health = 100;
-  P.happy = 75;
-  P.hunger = 80;
-  P.energy = 100;
+  P.x = 32.5; P.y = 32.5; P.angle = -Math.PI / 2;
+  P.health = 100; P.happy = 75; P.hunger = 80; P.energy = 100;
   P.money = 500000;
   P.portfolio = { NEO: 0, LHM: 0, HYH: 0, HAN: 0, SEC: 0, HWA: 0, PLI: 0, LGU: 0, COD: 0, WOO: 0, TEN: 0 };
-  gMin = 480;
-  dayN = 1;
+  gMin = 480; dayN = 1;
 
   Sim.init();
-
   cameraYaw = P.angle;
-
-  if (playerGroup) {
-    playerGroup.position.set(P.x, 0, P.y);
-  }
-
+  if (playerGroup) playerGroup.position.set(P.x, 0, P.y);
   updateHUD();
 
-  // Save to Firebase immediately
-  await saveUser(currentUsername, currentPassword);
+  await saveUser(currentUsername, currentPassword, currentUserEmail);
 
-  // Start game
   document.getElementById('lock-screen').style.display = 'none';
-  c.requestPointerLock();
+  if (c.requestPointerLock) { try { c.requestPointerLock(); } catch(e) {} }
   
   if (simInterval) clearInterval(simInterval);
-  simInterval = setInterval(() => {
-    Sim.tick();
-    updateDashboardData();
-  }, 10000);
+  simInterval = setInterval(() => { Sim.tick(); updateDashboardData(); }, 10000);
 
-  // Start auto-save loop
   if (autoSaveInterval) clearInterval(autoSaveInterval);
-  autoSaveInterval = setInterval(() => {
-    saveUser(currentUsername, currentPassword);
-  }, 15000);
+  autoSaveInterval = setInterval(() => { saveUser(currentUsername, currentPassword); }, 15000);
 
-  // 대통령 집무실 버튼은 ree1203만 표시
-  const _dbBtn2 = document.getElementById('dashboard-toggle-btn');
-  if (_dbBtn2) _dbBtn2.style.display = currentUsername === 'ree1203' ? '' : 'none';
+  startMultiplayer();
   showNotice(`🏙️ 회원가입 완료! 환영합니다, ${currentUsername}님!`);
 });
 
