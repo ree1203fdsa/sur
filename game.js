@@ -686,9 +686,12 @@ window.startGoogleLogin = async function() {
         return;
       }
       if (error.code === 'auth/unauthorized-domain') {
-        console.warn("Firebase Auth Unauthorized Domain:", location.hostname);
-        // Fallback to GIS Token Client below or prompt guide
-      } else if (error.code !== 'auth/operation-not-supported-in-this-environment') {
+        const curDomain = location.hostname || '현재 도메인';
+        setLoginStatus(`Google 로그인 오류: 승인되지 않은 도메인(${curDomain})입니다. Firebase 콘솔 > Authentication > 설정 > 승인된 도메인에 ${curDomain}을(를) 추가해 주세요.`, "error");
+        disableLoginInputs(false);
+        return;
+      }
+      if (error.code !== 'auth/operation-not-supported-in-this-environment') {
         setLoginStatus("Google 로그인 오류: " + (error.message || error.code), "error");
         disableLoginInputs(false);
         return;
