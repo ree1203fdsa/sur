@@ -3780,3 +3780,240 @@ body.is-mobile-device #settings-panel {
 .react-btn.reacted { background:rgba(99,102,241,0.3); border-color:#6366f1; }
 .react-picker { display:none; position:absolute; background:#0d1f36; border:1px solid #1e3a5f; border-radius:8px; padding:4px; gap:4px; z-index:999; }
 .chat-msg:hover .react-picker { display:flex; }
+
+/* ══════════════════════════════════
+   모바일 반응형
+══════════════════════════════════ */
+@media (max-width: 600px) {
+  /* 패널 너비 제한 */
+  #admin-panel, #hsy-panel, .glass-panel.modal-panel,
+  #company-panel, #ranking-panel, #dm-panel,
+  #event-popup, #achievement-toast {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translate(-50%, -50%) !important;
+  }
+  #dm-panel {
+    bottom: 200px !important;
+    top: auto !important;
+    transform: translateX(-50%) !important;
+  }
+  #achievement-toast {
+    top: 60px !important;
+    right: 8px !important;
+    left: auto !important;
+    transform: none !important;
+  }
+  /* 채팅 패널 */
+  #chat-panel {
+    width: 95vw !important;
+    left: 2.5vw !important;
+    right: 2.5vw !important;
+    bottom: 200px !important;
+  }
+  /* 버튼 HUD 위치 조정 */
+  #ranking-btn {
+    bottom: 200px !important;
+    right: 8px !important;
+    font-size: 11px !important;
+    padding: 5px 10px !important;
+  }
+  #dm-notify-btn {
+    bottom: 200px !important;
+    left: 8px !important;
+  }
+  #company-toggle-btn, #hsy-toggle-btn, #admin-toggle-btn {
+    font-size: 11px !important;
+    padding: 5px 10px !important;
+  }
+  /* 레벨 HUD */
+  #level-hud {
+    top: 8px !important;
+    font-size: 11px !important;
+  }
+  /* 입력 필드 iOS 줌 방지 */
+  input[type="text"], input[type="number"], input[type="password"],
+  select, textarea {
+    font-size: 16px !important;
+  }
+  /* 탭 버튼 터치 영역 */
+  .admin-tab-btn, .co-tab, .rank-tab {
+    padding: 10px 6px !important;
+    font-size: 11px !important;
+  }
+  /* 직업센터 버튼 조이스틱에 안 겹치게 */
+  #job-center-btn {
+    bottom: 180px !important;
+  }
+  /* 대통령 집무실 버튼 */
+  #dashboard-toggle-btn {
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+    bottom: 180px !important;
+  }
+}
+
+/* 터치 기기에서 호버 효과 비활성화 */
+@media (hover: none) {
+  .weapon-slot:hover { transform: none; }
+  .co-tab:hover { color: inherit; }
+}
+
+/* ── 모바일 컨트롤 레이아웃 보정 ── */
+@media (max-width: 600px) {
+  /* 레벨 HUD 줄바꿈 방지 */
+  #level-hud {
+    white-space: nowrap;
+    max-width: 90vw;
+    overflow: hidden;
+  }
+  #level-title-text { display: none; } /* 공간 절약: 칭호 숨김 */
+  #level-xp-bar { width: 70px !important; }
+
+  /* 하단 스탯바 조이스틱 위로 밀기 */
+  .city-stats {
+    margin-bottom: 170px !important;
+  }
+  /* 직업센터/대통령 버튼 위 */
+  #job-center-btn {
+    bottom: 175px !important;
+    font-size: 12px !important;
+    padding: 7px 14px !important;
+  }
+  /* 조이스틱 버튼 탭 영역 키우기 */
+  #mobile-action-btn, #mobile-attack-btn, #mobile-jump-btn {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* ═══════════════════════════════════════════════════
+   📱 모바일 추가 최적화 — 컴팩트 레이아웃
+   ═══════════════════════════════════════════════════ */
+
+/* (Tab) 키 힌트 — 모바일에서 숨김 (터치로 대체) */
+body.is-mobile-device .tab-key-hint {
+  display: none;
+}
+
+/* 스탯 패널 — 더 작고 컴팩트하게 */
+body.is-mobile-device #stats {
+  gap: 3px !important;
+  padding: 6px 8px !important;
+}
+body.is-mobile-device .srow {
+  gap: 4px;
+}
+body.is-mobile-device .sbg {
+  height: 6px !important;
+  width: 72px !important;
+}
+body.is-mobile-device .sval {
+  font-size: 9px !important;
+  min-width: 16px;
+}
+body.is-mobile-device .sico {
+  font-size: 11px !important;
+  width: 14px;
+}
+
+/* 대통령 집무실 버튼 — 모바일에서 작게 */
+body.is-mobile-device #dashboard-toggle-btn {
+  font-size: 10px !important;
+  padding: 5px 8px !important;
+}
+
+/* 세로 모드 추가 최적화 */
+@media (pointer: coarse) and (orientation: portrait) {
+
+  /* 미니맵 — 더 작게 (조이스틱·버튼과 겹치지 않게) */
+  body.is-mobile-device #minimap {
+    width: 68px !important;
+    height: 68px !important;
+    bottom: 172px !important;
+    right: 6px !important;
+  }
+
+  /* 오른쪽 버튼들 — 더 컴팩트하게 */
+  body.is-mobile-device #mute-btn {
+    bottom: 250px !important;
+    right: 6px !important;
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 14px !important;
+    padding: 0 !important;
+  }
+  body.is-mobile-device #settings-btn {
+    bottom: 288px !important;
+    right: 6px !important;
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 14px !important;
+    padding: 0 !important;
+  }
+  body.is-mobile-device #player-list-btn {
+    bottom: 212px !important;
+    right: 6px !important;
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 12px !important;
+  }
+
+  /* 랭킹 버튼 — 조이스틱 위 */
+  body.is-mobile-device #ranking-btn {
+    bottom: 178px !important;
+    right: 44px !important;
+    font-size: 11px !important;
+    padding: 4px 8px !important;
+  }
+
+  /* 채팅 버튼 — 조이스틱 위 */
+  body.is-mobile-device #chat-toggle-btn {
+    bottom: 178px !important;
+    left: 6px !important;
+    width: 36px !important;
+    height: 36px !important;
+  }
+
+  /* 채팅 패널 — 위쪽으로 */
+  body.is-mobile-device #chat-panel {
+    bottom: 220px !important;
+    left: 6px !important;
+    width: calc(100vw - 70px) !important;
+    max-height: 200px !important;
+  }
+
+  /* DM 알림 버튼 */
+  body.is-mobile-device #dm-notify-btn {
+    bottom: 220px !important;
+    right: 6px !important;
+  }
+
+  /* 모바일 E·점프 버튼 — 더 크게 */
+  #mobile-action-btn {
+    width: 64px !important;
+    height: 64px !important;
+    font-size: 24px !important;
+  }
+  #mobile-jump-btn {
+    width: 56px !important;
+    height: 56px !important;
+    font-size: 22px !important;
+  }
+  #mobile-attack-btn {
+    width: 64px !important;
+    height: 64px !important;
+    font-size: 24px !important;
+  }
+
+  /* 조이스틱 — 조금 더 크게 */
+  #joystick-zone {
+    width: 140px !important;
+    height: 140px !important;
+  }
+  #joystick-outer {
+    width: 140px !important;
+    height: 140px !important;
+  }
+}

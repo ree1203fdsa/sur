@@ -560,6 +560,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
     if (currentUsername === 'ree1203') initWeaponSystem();
     initCompanyPanel();
     initAllFeatures();
+    if (typeof initMobileControls === 'function') initMobileControls();
     // 대통령 집무실 버튼은 ree1203만 표시
     const _dbBtn = document.getElementById('dashboard-toggle-btn');
     if (_dbBtn) _dbBtn.style.display = currentUsername === 'ree1203' ? '' : 'none';
@@ -737,23 +738,29 @@ window.addEventListener('mouseup', () => {
   isDragging = false;
 });
 
-// Touch Drag-to-Rotate (mobile)
+// Touch Drag-to-Rotate (mobile) — 조이스틱 미사용 시 fallback
+// patchTouchCamera()가 initMobileControls()에서 더 정밀하게 대체함
 c.addEventListener('touchstart', e => {
   if (document.getElementById('lock-screen').style.display !== 'none') return;
-  if (e.touches.length === 1) {
+  // 조이스틱 영역(왼쪽 160px) 제외
+  const t = e.touches[0];
+  if (t && t.clientX > 160) {
     isDragging = true;
-    prevMouseX = e.touches[0].clientX;
-    prevMouseY = e.touches[0].clientY;
+    prevMouseX = t.clientX;
+    prevMouseY = t.clientY;
   }
 }, { passive: true });
 
 c.addEventListener('touchmove', e => {
-  if (isDragging && !dlgOpen && e.touches.length === 1) {
-    const deltaX = e.touches[0].clientX - prevMouseX;
-    prevMouseX = e.touches[0].clientX;
-    prevMouseY = e.touches[0].clientY;
-
-    cameraYaw -= deltaX * 0.006;
+  if (isDragging && !dlgOpen && e.touches.length >= 1) {
+    const t = e.touches[0];
+    if (t.clientX <= 160) return;
+    const deltaX = t.clientX - prevMouseX;
+    const deltaY = t.clientY - prevMouseY;
+    prevMouseX = t.clientX;
+    prevMouseY = t.clientY;
+    cameraYaw   -= deltaX * 0.005;
+    cameraPitch  = Math.max(-0.5, Math.min(0.8, cameraPitch + deltaY * 0.004));
     P.angle = cameraYaw;
   }
 }, { passive: true });
@@ -2437,8 +2444,22 @@ function render(ts) {
     }
   }
 
+  // ── hsy 관전 모드 카메라 ──
+  if (hsySpectateTarget && camera && !adminState.spectateTarget) {
+    const tgt = otherPlayers[hsySpectateTarget];
+    if (tgt) {
+      camera.position.set(tgt.x - Math.sin(cameraYaw) * 5, 4, tgt.y - Math.cos(cameraYaw) * 5);
+      camera.lookAt(new THREE.Vector3(tgt.x, 1, tgt.y));
+    } else {
+      hsySpectateTarget = null;
+      if (typeof hsyAddLog === 'function') hsyAddLog('관전 대상이 오프라인 상태가 되었습니다.', 'warn');
+      const hsySs = document.getElementById('hsy-spectate-status');
+      if (hsySs) hsySs.textContent = '관전 중 아님 (대상 오프라인)';
+    }
+  }
+
   // ── Camera position tracking (1st / 3rd Person / Bird View Toggle) ──
-  if (camera && !adminState.spectateTarget) {
+  if (camera && !adminState.spectateTarget && !hsySpectateTarget) {
     const curH = adminState.flyMode ? adminState.flyY : (P.h || 0);
     if (viewMode === 'third') {
       if (playerGroup) playerGroup.visible = true;
@@ -4752,9 +4773,9 @@ function updateVehicles(dt) {
 // ══════════════════════════════════════════════════════
 const SUBWAY_STATIONS = [
   { name: '중앙역', x: 32, y: 32 },
-  { name: '북부역', x: 32, y: 18 },
-  { name: '동부역', x: 42, y: 32 },
-  { name: '서부역', x: 22, y: 32 }
+  { name: '북부역', x: 32, y:  6 },
+  { name: '동부역', x: 55, y: 32 },
+  { name: '서부역', x:  8, y: 32 }
 ];
 const subwayMeshes = [];
 
@@ -10694,6 +10715,7 @@ setInterval(function() {
 
 var hsyPanelOpen = false;
 var hsySelectedTarget = null;
+var hsySpectateTarget = null;
 var hsyLogs = [];
 
 function isHsy() { return currentUsername === 'hsy'; }
@@ -10910,6 +10932,80 @@ function hsyChatBan() {
   })
   .catch(function() { showNotice('❌ 채팅 금지 실패'); });
 }
+
+// ── hsy 관전 기능 ──
+function hsyStartSpectate(uname) {
+  if (!isHsy()) return;
+  if (!uname) uname = hsySelectedTarget;
+  if (!uname) { showNotice('❌ 먼저 플레이어를 검색하세요.'); return; }
+  if (!otherPlayers[uname]) { showNotice('❌ ' + uname + '은(는) 오프라인입니다.'); hsyAddLog('관전 실패 (오프라인): ' + uname, 'err'); return; }
+  hsySpectateTarget = uname;
+  if (typeof playerGroup !== 'undefined' && playerGroup) playerGroup.visible = false;
+  var ss = document.getElementById('hsy-spectate-status');
+  if (ss) ss.textContent = '📷 관전 중: ' + uname;
+  hsyUpdateSpHud();
+  setTimeout(broadcastPlayerPosition, 100);
+  hsyAddLog('관전 시작: ' + uname, 'ok');
+  showNotice('👁️ ' + uname + ' 관전 시작');
+}
+
+function hsyStopSpectate() {
+  if (!isHsy()) return;
+  var prev = hsySpectateTarget;
+  hsySpectateTarget = null;
+  if (typeof playerGroup !== 'undefined' && playerGroup) playerGroup.visible = true;
+  var ss = document.getElementById('hsy-spectate-status');
+  if (ss) ss.textContent = '관전 중 아님';
+  hsyUpdateSpHud();
+  setTimeout(broadcastPlayerPosition, 200);
+  if (prev) { hsyAddLog('관전 종료: ' + prev, 'info'); showNotice('👁️ 관전 종료'); }
+}
+
+// hsy 관전 HUD 오버레이 & broadcastPlayerPosition 패치
+(function() {
+  // ① 관전 HUD 생성
+  var hsySpHud = document.createElement('div');
+  hsySpHud.id = 'hsy-spectator-hud';
+  Object.assign(hsySpHud.style, {
+    display: 'none',
+    position: 'fixed',
+    bottom: '56px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: 'rgba(0,0,0,0.72)',
+    border: '1.5px solid rgba(192,132,252,0.6)',
+    borderRadius: '40px',
+    padding: '8px 22px',
+    color: '#fff',
+    fontSize: '13px',
+    pointerEvents: 'none',
+    zIndex: '6000',
+    backdropFilter: 'blur(6px)',
+    letterSpacing: '0.3px',
+    whiteSpace: 'nowrap',
+  });
+  document.body.appendChild(hsySpHud);
+
+  window.hsyUpdateSpHud = function() {
+    if (!hsySpectateTarget) { hsySpHud.style.display = 'none'; return; }
+    hsySpHud.style.display = 'block';
+    hsySpHud.innerHTML = '👁️ &nbsp;<strong style="color:#c084fc;">' + hsySpectateTarget + '</strong>&nbsp; 관전 중 &nbsp;·&nbsp; <span style="color:rgba(255,255,255,0.5);font-size:11px;">부관리자 패널 → 관전 중지</span>';
+  };
+
+  // ② broadcastPlayerPosition 패치: hsy 관전 중이면 spectator 플래그 포함 송출
+  var _origHsyBroadcast = broadcastPlayerPosition;
+  broadcastPlayerPosition = function() {
+    if (hsySpectateTarget && isHsy() && currentUsername && isCloudConnected) {
+      fetch(DB_URL + 'online_players/' + encodeURIComponent(currentUsername) + '.json', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: P.x, y: P.y, angle: P.angle, t: Date.now(), spectator: true })
+      }).catch(function() {});
+      return;
+    }
+    _origHsyBroadcast();
+  };
+})();
 
 
 // ════════════════════════════════════════════════════════
@@ -12954,4 +13050,198 @@ function initAllFeatures() {
   setInterval(pollIncomingDM, 30000);
 }
 window.initAllFeatures = initAllFeatures;
+
+
+// ══════════════════════════════════════════
+// 모바일 컨트롤 시스템
+// ══════════════════════════════════════════
+(function(){
+
+const isTouchDevice = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+function initMobileControls() {
+  if (!isTouchDevice) return;
+
+  const mobileDiv = document.getElementById('mobile-controls');
+  if (mobileDiv) mobileDiv.style.display = 'block';
+
+  // 공격 버튼은 ree1203만
+  if (currentUsername === 'ree1203') {
+    const atk = document.getElementById('mobile-attack-btn');
+    if (atk) atk.style.display = 'block';
+  }
+
+  initJoystick();
+  patchTouchCamera();
+}
+window.initMobileControls = initMobileControls;
+
+// ─── 키 시뮬레이션 ───
+window.mobileKeyDown = function(key) {
+  K[key] = true;
+};
+window.mobileKeyUp = function(key) {
+  K[key] = false;
+};
+
+// ─── 가상 조이스틱 ───
+function initJoystick() {
+  const zone  = document.getElementById('joystick-zone');
+  const outer = document.getElementById('joystick-outer');
+  const inner = document.getElementById('joystick-inner');
+  if (!zone || !inner) return;
+
+  const R = 65; // 외부 원 반지름 (px)
+  const DEAD = 12; // 데드존 (px)
+  let active = false;
+  let originX = 0, originY = 0;
+  let joyTouchId = null;
+
+  function resetInner() {
+    inner.style.transform = 'translate(-50%, -50%)';
+    inner.style.left = '50%';
+    inner.style.top  = '50%';
+    K['w'] = K['s'] = K['a'] = K['d'] = K['W'] = K['S'] = K['A'] = K['D'] = false;
+  }
+
+  zone.addEventListener('touchstart', function(e) {
+    e.preventDefault();
+    if (active) return;
+    const t = e.changedTouches[0];
+    joyTouchId = t.identifier;
+    active = true;
+    const rect = outer.getBoundingClientRect();
+    originX = rect.left + rect.width / 2;
+    originY = rect.top  + rect.height / 2;
+  }, { passive: false });
+
+  window.addEventListener('touchmove', function(e) {
+    if (!active) return;
+    let t = null;
+    for (let i = 0; i < e.touches.length; i++) {
+      if (e.touches[i].identifier === joyTouchId) { t = e.touches[i]; break; }
+    }
+    if (!t) return;
+
+    let dx = t.clientX - originX;
+    let dy = t.clientY - originY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const clamped = Math.min(dist, R);
+    const nx = (dx / dist) * clamped;
+    const ny = (dy / dist) * clamped;
+
+    // 도트 위치
+    inner.style.left = (R + nx) + 'px';
+    inner.style.top  = (R + ny) + 'px';
+    inner.style.transform = 'translate(-50%, -50%)';
+
+    // 데드존 처리 후 키 시뮬레이션
+    K['w'] = K['s'] = K['a'] = K['d'] = K['W'] = K['S'] = K['A'] = K['D'] = false;
+    if (dist < DEAD) return;
+
+    const angle = Math.atan2(dy, dx); // -π ~ π
+    const deg   = angle * 180 / Math.PI; // -180 ~ 180
+
+    // 8방향 매핑
+    if (deg > -157.5 && deg < -22.5) {
+      // 위 (-135 ~ -22.5 = 상단)
+      K['w'] = K['W'] = true;
+    }
+    if (deg > 22.5 && deg < 157.5) {
+      // 아래
+      K['s'] = K['S'] = true;
+    }
+    if (Math.abs(deg) > 112.5) {
+      // 왼쪽
+      K['a'] = K['A'] = true;
+    }
+    if (Math.abs(deg) < 67.5) {
+      // 오른쪽
+      K['d'] = K['D'] = true;
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchend', function(e) {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === joyTouchId) {
+        active = false;
+        joyTouchId = null;
+        resetInner();
+        break;
+      }
+    }
+  }, { passive: true });
+
+  window.addEventListener('touchcancel', function() {
+    active = false;
+    joyTouchId = null;
+    resetInner();
+  }, { passive: true });
+}
+
+// ─── 카메라 터치 (오른쪽 영역) — yaw + pitch ───
+function patchTouchCamera() {
+  const c = document.getElementById('c') || document.querySelector('canvas');
+  if (!c) return;
+
+  let camTouchId   = null;
+  let camPrevX = 0, camPrevY = 0;
+  const JOY_RIGHT_EDGE = 160; // px — 조이스틱 영역 오른쪽 경계
+
+  // 기존 touchstart/touchmove/touchend를 덮어씌움
+  c.addEventListener('touchstart', function(e) {
+    if (document.getElementById('lock-screen')?.style.display !== 'none') return;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (t.clientX > JOY_RIGHT_EDGE && camTouchId === null) {
+        camTouchId = t.identifier;
+        camPrevX = t.clientX;
+        camPrevY = t.clientY;
+        break;
+      }
+    }
+  }, { passive: true });
+
+  c.addEventListener('touchmove', function(e) {
+    if (camTouchId === null) return;
+    for (let i = 0; i < e.touches.length; i++) {
+      const t = e.touches[i];
+      if (t.identifier !== camTouchId) continue;
+      const dx = t.clientX - camPrevX;
+      const dy = t.clientY - camPrevY;
+      camPrevX = t.clientX;
+      camPrevY = t.clientY;
+
+      // 수평 = yaw, 수직 = pitch
+      cameraYaw   -= dx * 0.005;
+      cameraPitch  = Math.max(-0.5, Math.min(0.8, cameraPitch + dy * 0.004));
+      if (typeof P !== 'undefined') P.angle = cameraYaw;
+      break;
+    }
+  }, { passive: true });
+
+  c.addEventListener('touchend', function(e) {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === camTouchId) {
+        camTouchId = null;
+        break;
+      }
+    }
+  }, { passive: true });
+
+  c.addEventListener('touchcancel', function() {
+    camTouchId = null;
+  }, { passive: true });
+}
+
+// ─── 자동 감지 ───
+// 로그인 후 initMobileControls()를 호출하므로 여기서는 대기
+// isTouchDevice이면 lock-screen 해제 직후 자동 실행
+if (isTouchDevice) {
+  // 로그인 전에도 화면 크기 조정
+  document.body.classList.add('is-mobile');
+  console.log('[Mobile] 터치 기기 감지됨');
+}
+
+})();
 
