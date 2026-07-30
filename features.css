@@ -1,0 +1,323 @@
+/* ============================================================
+   신규 기능 6종 — 스타일 (features.css)
+   ============================================================ */
+
+/* ── 신규 기능 버튼 바 ── */
+#features-bar {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  position: fixed;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 250;
+}
+.feat-btn {
+  width: 46px; height: 46px;
+  border-radius: 12px;
+  background: rgba(4,10,24,0.88);
+  border: 1px solid rgba(0,229,255,0.22);
+  color: #fff; font-size: 20px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, border-color 0.2s, transform 0.15s;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  position: relative;
+}
+.feat-btn:hover {
+  background: rgba(0,229,255,0.12);
+  border-color: rgba(0,229,255,0.5);
+  transform: scale(1.08);
+}
+.feat-btn .feat-tip {
+  display: none;
+  position: absolute;
+  left: 54px;
+  background: rgba(4,10,24,0.95);
+  border: 1px solid rgba(0,229,255,0.3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: #c0d0e8;
+  pointer-events: none;
+}
+.feat-btn:hover .feat-tip { display: block; }
+
+/* ── 공통 패널 ── */
+.feat-panel {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9200;
+  width: 640px; max-width: 96vw; max-height: 88vh;
+  overflow-y: auto;
+  background: linear-gradient(160deg, rgba(4,10,24,0.97), rgba(8,18,40,0.97));
+  border: 1px solid rgba(0,229,255,0.18);
+  border-radius: 16px;
+  box-shadow: 0 8px 48px rgba(0,0,0,0.7);
+  color: var(--text);
+  font-size: 13px;
+}
+.feat-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px;
+  background: rgba(0,229,255,0.05);
+  border-bottom: 1px solid rgba(0,229,255,0.12);
+  font-size: 15px; font-weight: 700;
+  position: sticky; top: 0; z-index: 2;
+  backdrop-filter: blur(10px);
+}
+.feat-panel-body { padding: 16px; }
+.feat-close-btn {
+  background: none; border: none; color: var(--text-dim);
+  font-size: 20px; cursor: pointer; line-height: 1; padding: 2px 6px;
+}
+.feat-close-btn:hover { color: #ff4560; }
+
+/* ── 탭 바 ── */
+.feat-tabs {
+  display: flex;
+  border-bottom: 1px solid rgba(0,229,255,0.12);
+  background: rgba(0,0,0,0.3);
+  position: sticky; top: 49px; z-index: 2;
+}
+.feat-tab-btn {
+  flex: 1; padding: 9px;
+  background: none; border: none; border-bottom: 2px solid transparent;
+  color: var(--text-dim); font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+.feat-tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+.feat-tab-btn:hover:not(.active) { color: var(--text); }
+
+/* ── 지표 카드 ── */
+.feat-stat-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;
+  margin-bottom: 14px;
+}
+.feat-stat-card {
+  background: rgba(0,229,255,0.05);
+  border: 1px solid rgba(0,229,255,0.12);
+  border-radius: 10px; padding: 10px 12px;
+}
+.feat-stat-label { font-size: 11px; color: var(--text-dim); margin-bottom: 2px; }
+.feat-stat-val { font-size: 16px; font-weight: 800; color: var(--primary); }
+
+/* ── 유틸 ── */
+.dim-text { color: var(--text-dim); }
+.small-confirm-btn {
+  background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3);
+  color: var(--primary); border-radius: 6px; padding: 5px 12px;
+  font-size: 12px; cursor: pointer; white-space: nowrap; font-weight: 700;
+}
+.small-confirm-btn:hover { background: rgba(0,229,255,0.2); }
+
+/* ── 섹션 제목 ── */
+.feat-section-title {
+  font-size: 12px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: 0.5px;
+  margin: 14px 0 8px; padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+/* ═══════════════════════════════
+   🏦 은행 시스템
+═══════════════════════════════ */
+.bank-input-group {
+  display: flex; gap: 8px; margin-bottom: 10px;
+}
+.bank-input-group input {
+  flex: 1; background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(0,229,255,0.2); border-radius: 8px;
+  padding: 8px 10px; color: #fff; font-size: 13px;
+  outline: none;
+}
+.bank-input-group input:focus { border-color: rgba(0,229,255,0.5); }
+
+/* ═══════════════════════════════
+   🎰 로또
+═══════════════════════════════ */
+#lotto-grid {
+  display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; margin-bottom: 12px;
+}
+.lotto-num {
+  aspect-ratio: 1; border-radius: 50%;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text); font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: background 0.15s;
+}
+.lotto-num:hover { background: rgba(0,229,255,0.15); }
+.lotto-num.selected {
+  background: var(--primary); color: #000;
+  border-color: var(--primary); box-shadow: 0 0 8px rgba(0,229,255,0.5);
+}
+#lotto-result {
+  background: rgba(0,0,0,0.3); border-radius: 8px;
+  padding: 10px 12px; font-size: 12px; min-height: 52px; line-height: 1.7;
+}
+
+/* ── 슬롯머신 ── */
+.slot-machine {
+  display: flex; gap: 10px; justify-content: center; margin: 16px 0;
+}
+.slot-reel {
+  width: 72px; height: 72px; border-radius: 12px;
+  background: rgba(0,0,0,0.4); border: 2px solid rgba(0,229,255,0.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 36px; box-shadow: inset 0 0 12px rgba(0,0,0,0.5);
+}
+#slot-result { text-align: center; font-size: 14px; font-weight: 700; min-height: 24px; margin-top: 6px; }
+
+/* ── 블랙잭 ── */
+.bj-area {
+  padding: 12px; background: rgba(0,80,0,0.1);
+  border: 1px solid rgba(0,150,0,0.2); border-radius: 10px; margin-bottom: 10px;
+}
+.bj-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+.bj-card {
+  display: inline-block; background: #fff; color: #111;
+  border-radius: 5px; padding: 2px 7px; font-size: 14px; font-weight: 700;
+  margin-right: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+}
+.bj-hidden { background: #1e3a5f !important; color: #1e3a5f !important; }
+.bj-total { font-size: 12px; color: var(--text-dim); }
+#bj-result { text-align: center; font-size: 13px; font-weight: 700; min-height: 22px; margin-top: 8px; }
+.bj-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; justify-content: center; }
+
+/* ═══════════════════════════════
+   🗳️ 선거 캠페인
+═══════════════════════════════ */
+.camp-dist-card {
+  background: rgba(0,229,255,0.03); border: 1px solid rgba(0,229,255,0.1);
+  border-radius: 10px; padding: 12px; margin-bottom: 10px;
+}
+.camp-dist-head {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+}
+.camp-dist-pledges { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+.camp-badge {
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+  cursor: pointer; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-dim); transition: all 0.15s; white-space: nowrap;
+}
+.camp-badge.active {
+  background: rgba(0,229,255,0.18); border-color: var(--primary); color: var(--primary);
+}
+.camp-badge:hover { background: rgba(0,229,255,0.08); }
+.camp-rally-btn {
+  width: 100%; padding: 7px; border-radius: 8px; font-size: 12px; font-weight: 700;
+  cursor: pointer; background: rgba(255,176,48,0.1); border: 1px solid rgba(255,176,48,0.35);
+  color: var(--gold); margin-top: 2px;
+}
+.camp-rally-btn:hover { background: rgba(255,176,48,0.2); }
+.camp-pledge-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 6px;
+}
+.camp-approval-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+.camp-approval-bg {
+  flex: 1; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden;
+}
+#camp-approval-bar {
+  height: 100%; background: linear-gradient(90deg, #ff4560, #ffb030, #00e676);
+  border-radius: 4px; transition: width 0.6s;
+}
+
+/* ═══════════════════════════════
+   🌾 자원 거래소
+═══════════════════════════════ */
+.res-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.res-info { display: flex; align-items: center; gap: 10px; min-width: 140px; flex: 1; }
+.res-actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.res-btn {
+  padding: 5px 10px; border-radius: 6px; font-size: 11px; font-weight: 700;
+  cursor: pointer; border: 1px solid; transition: opacity 0.15s;
+}
+.res-btn.buy  { background: rgba(0,230,118,0.12); border-color: rgba(0,230,118,0.4); color: #00e676; }
+.res-btn.sell { background: rgba(255,69,96,0.12);  border-color: rgba(255,69,96,0.4);  color: #ff4560; }
+.res-btn.prod { background: rgba(168,85,247,0.12); border-color: rgba(168,85,247,0.4); color: #c084fc; }
+.res-btn:hover { opacity: 0.75; }
+.res-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.res-qty-input {
+  width: 60px; background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(0,229,255,0.2); border-radius: 6px;
+  padding: 5px 6px; color: #fff; font-size: 12px; text-align: center;
+}
+.res-nation-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 6px; flex-wrap: wrap;
+}
+.res-nation-select {
+  background: rgba(0,0,0,0.4); border: 1px solid rgba(0,229,255,0.2);
+  border-radius: 6px; color: #fff; padding: 5px 8px; font-size: 12px;
+}
+
+/* ═══════════════════════════════
+   🤝 거래 마켓
+═══════════════════════════════ */
+.mkt-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-bottom: 6px;
+}
+
+/* ═══════════════════════════════
+   🏗️ 건설 시스템
+═══════════════════════════════ */
+.build-plot-card {
+  background: rgba(0,0,0,0.22); border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px; padding: 12px; margin-bottom: 10px; transition: border-color 0.2s;
+}
+.build-plot-card.owned { border-color: rgba(0,229,255,0.22); }
+.build-plot-head {
+  display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px;
+}
+.bld-type-btn {
+  padding: 7px 10px; border-radius: 8px; font-size: 12px; cursor: pointer; text-align: center;
+  background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.18); color: var(--text);
+  transition: background 0.15s; line-height: 1.4;
+}
+.bld-type-btn:hover { background: rgba(0,229,255,0.14); }
+
+/* ── 모바일 세로 화면 ── */
+@media (max-width: 640px) {
+  .feat-panel { width: 98vw; max-height: 92vh; border-radius: 12px; }
+  #features-bar { left: 4px; gap: 4px; }
+  .feat-btn { width: 38px; height: 38px; font-size: 17px; }
+  #lotto-grid { grid-template-columns: repeat(9,1fr); gap: 3px; }
+  .lotto-num { font-size: 9px; }
+  .slot-reel { width: 56px; height: 56px; font-size: 28px; }
+}
+
+/* ── 모바일 가로 화면 (핸드폰 landscape) — 조이스틱 충돌 방지 ── */
+@media (max-height: 500px) and (orientation: landscape) {
+  #features-bar {
+    flex-direction: row;
+    left: 50%;
+    top: auto;
+    bottom: 6px;
+    transform: translateX(-50%);
+    gap: 5px;
+  }
+  .feat-btn {
+    width: 36px; height: 36px;
+    font-size: 16px;
+    border-radius: 10px;
+  }
+  /* 툴팁 방향: 위로 표시 */
+  .feat-btn .feat-tip {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 42px;
+    top: auto;
+  }
+  .feat-panel { max-height: 86vh; }
+  .slot-reel { width: 56px; height: 56px; font-size: 28px; }
+  #lotto-grid { grid-template-columns: repeat(9,1fr); gap: 3px; }
+  .lotto-num { font-size: 9px; }
+}
